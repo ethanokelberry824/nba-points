@@ -34,7 +34,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from build_features import FEATURES, SEASONS, load_logs  # noqa: E402
+from build_features import FEATURES, SEASONS, load_logs, rotation_status  # noqa: E402
 from pregame import PLAYER_COLS, SITE_DIR, TEAM_COLS  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -117,11 +117,13 @@ def accuracy(test: pd.DataFrame, version: str) -> dict:
     }
 
 
-# "Key defender" context on the Matchup page (one rule, used by the API and printed below)
+# "Defense without him" context on the Matchup page's opponent card (one rule, used by the
+# API and printed below). At most ONE player per team: the biggest adjusted value among
+# its current rotation players, and only if it clears KEY_DEF_MIN_SHRUNK.
 KEY_DEF_MIN_WITH = 10       # games he played for the team (this season + last)
 KEY_DEF_MIN_WITHOUT = 5     # games the team played without him, after his first game for them
 KEY_DEF_SHRINK_K = 10       # shrink toward 0: delta * without / (without + 10), like the model's blends
-KEY_DEF_MIN_SHRUNK = 2.0    # show the line only when the shrunk value is at least this
+KEY_DEF_MIN_SHRUNK = 4.0    # show the line only when the adjusted (shrunk) value is at least this
 
 
 def defense_on_off(players: pd.DataFrame, teams: pd.DataFrame, seasons: list[str]) -> pd.DataFrame:
@@ -134,7 +136,9 @@ def defense_on_off(players: pd.DataFrame, teams: pd.DataFrame, seasons: list[str
                            + = the team defends worse without him). Raw.
         def_delta_shrunk = def_delta * games_without / (games_without + 10): pulled toward 0
                            when he's missed only a few games, like the model's blends
-        key_defender     = shown on the site: 10+ games with him, 5+ without, shrunk >= 2
+        eligible         = 10+ games with him, 5+ without, shrunk >= 4
+        (key_defender, the one line per team the site shows, is added by
+         pick_defense_lines below)
 
     Same team only (games he played for another team don't count), and "without" only
     counts the team's games after his first game for that team, so a player who joined
@@ -176,11 +180,41 @@ def defense_on_off(players: pd.DataFrame, teams: pd.DataFrame, seasons: list[str
     out.loc[out["games_without"] == 0, ["def_rtg_without", "def_delta"]] = np.nan
     gw = out["games_without"]
     out["def_delta_shrunk"] = out["def_delta"] * gw / (gw + KEY_DEF_SHRINK_K)
-    out["key_defender"] = ((out["games_with"] >= KEY_DEF_MIN_WITH)
-                           & (gw >= KEY_DEF_MIN_WITHOUT)
-                           & (out["def_delta_shrunk"] >= KEY_DEF_MIN_SHRUNK))
+    out["eligible"] = ((out["games_with"] >= KEY_DEF_MIN_WITH)
+                       & (gw >= KEY_DEF_MIN_WITHOUT)
+                       & (out["def_delta_shrunk"] >= KEY_DEF_MIN_SHRUNK))
     out["seasons"] = " + ".join(seasons)
     return out.round({"def_rtg_with": 2, "def_rtg_without": 2, "def_delta": 2, "def_delta_shrunk": 2})
+
+
+def current_rotations(players: pd.DataFrame, teams: pd.DataFrame, season: str) -> pd.DataFrame:
+    """Each team's rotation for its NEXT game, by the training rule (rotation_status: played
+    for the team in its last 10 games, 15+ min a game), keeping only players still on that
+    team (their latest game was for it). Same list the site's who's-out panel shows for any
+    date after the stats-through date. Columns: TEAM_ID, PLAYER_ID."""
+    t = teams[teams["SEASON"] == season].sort_values(["TEAM_ID", "GAME_DATE"])
+    sched = t[["TEAM_ID", "SEASON", "GAME_ID"]].copy()
+    sched["team_game_num"] = t.groupby("TEAM_ID").cumcount() + 1
+    nxt = sched.groupby("TEAM_ID")["team_game_num"].max().reset_index()
+    nxt = nxt.assign(SEASON=season, GAME_ID=-(np.arange(len(nxt)) + 1),
+                     team_game_num=nxt["team_game_num"] + 1)       # a fake next game per team
+    p = players[players["SEASON"] == season]
+    rot = rotation_status(p, pd.concat([sched, nxt], ignore_index=True))
+    rot = rot[rot["GAME_ID"] < 0][["TEAM_ID", "PLAYER_ID"]]
+    latest = p.sort_values("GAME_DATE").groupby("PLAYER_ID")["TEAM_ID"].last()
+    return rot[rot["PLAYER_ID"].map(latest) == rot["TEAM_ID"]].reset_index(drop=True)
+
+
+def pick_defense_lines(onoff: pd.DataFrame, rotations: pd.DataFrame) -> pd.DataFrame:
+    """key_defender = the one line per team the site shows: among the team's current
+    rotation players who are eligible, the biggest adjusted (shrunk) value."""
+    out = onoff.copy()
+    rot = set(zip(rotations["TEAM_ID"], rotations["PLAYER_ID"]))
+    out["in_rotation"] = [k in rot for k in zip(out["TEAM_ID"], out["PLAYER_ID"])]
+    cand = out[out["eligible"] & out["in_rotation"]]
+    top = cand.loc[cand.groupby("TEAM_ID")["def_delta_shrunk"].idxmax()].index
+    out["key_defender"] = out.index.isin(top)
+    return out
 
 
 def main() -> None:
@@ -216,6 +250,7 @@ def main() -> None:
 
     # defense with / without each player, this season + last (context only, not a model feature)
     onoff = defense_on_off(players, teams, SEASONS[-2:])
+    onoff = pick_defense_lines(onoff, current_rotations(players, teams, CURRENT))
     onoff.to_csv(SITE_DIR / "def_onoff.csv", index=False)
 
     # headline accuracy = version 1's pre-committed test score; version 2 (the model the
@@ -242,13 +277,15 @@ def main() -> None:
     print(f"  {len(pl)} players, {len(tl)} teams, {len(p):,} player-game rows, {len(t):,} team-game rows")
     print("  accuracy (v1, pre-committed):", {k: v for k, v in meta.items() if k.startswith(("test", "pct", "base"))})
     print("  accuracy (v2, second look):", {k: v for k, v in meta["v2"].items() if k.startswith(("test_mae", "pct"))})
-    # who gets a "Key defender" line: flagged AND still on that team (his latest team)
+    # the "Defense without him" lines the site can show: at most one per team
     shown = (onoff[onoff["key_defender"]]
              .merge(pl[["PLAYER_ID", "PLAYER_NAME", "TEAM", "TEAM_ID"]], on=["PLAYER_ID", "TEAM_ID"])
              .sort_values("def_delta_shrunk", ascending=False))
-    print(f"  def_onoff ({onoff['seasons'].iloc[0]}): {len(onoff)} player-teams, "
-          f"{len(shown)} 'key defender' lines ({KEY_DEF_MIN_WITH}+ games with him, "
-          f"{KEY_DEF_MIN_WITHOUT}+ without, shrunk >= {KEY_DEF_MIN_SHRUNK}, still on that team):")
+    n_elig = int((onoff["eligible"] & onoff["in_rotation"]).sum())
+    print(f"  def_onoff ({onoff['seasons'].iloc[0]}): {len(onoff)} player-teams; "
+          f"{n_elig} current rotation players clear the bar ({KEY_DEF_MIN_WITH}+ games with him, "
+          f"{KEY_DEF_MIN_WITHOUT}+ without, adjusted >= {KEY_DEF_MIN_SHRUNK}); "
+          f"{len(shown)} 'Defense without him' lines can show (one per team, biggest first):")
     cols = ["PLAYER_NAME", "TEAM", "games_with", "games_without", "def_rtg_with",
             "def_rtg_without", "def_delta", "def_delta_shrunk"]
     print("    " + shown[cols].to_string(index=False).replace("\n", "\n    "))

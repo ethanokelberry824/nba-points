@@ -193,7 +193,8 @@ if (luka && wemby && sas) {
   const highlighted = await page.getByText("Out tonight", { exact: true }).count();
   await pageChecks(page, "v2 wemby out", { minBars: 8 });
   console.log(`  [v2 wemby] Luka vs SAS with Wembanyama off: "${chip}" | key defender: ${keyText} | highlighted: ${highlighted > 0}`);
-  if (!keyText || !highlighted) fail("Wembanyama key defender line missing or not highlighted");
+  if (!keyText || !highlighted) fail("Wembanyama 'Defense without him' line missing or not highlighted");
+  if ((await page.getByText("Defense without him", { exact: true }).count()) !== 1) fail("want exactly one 'Defense without him' line");
   await snap(page, "v2-matchup-wemby-out-vs-sas-desktop-dark");
   await ctx.close();
 } else fail("Luka, Wembanyama or SAS not found");
@@ -234,7 +235,7 @@ for (const [device, viewport, scale] of [["desktop", DESKTOP, 1], ["phone", PHON
   const { ctx, page } = await newPage({ viewport, scale, name: `ladder-${device}`, hasTouch: device === "phone" });
   await page.goto(`${WEB}/model-performance`);
   await settled(page, "Every model on the test season");
-  const ladder = page.getByText("Within about a tenth of a point of a pro projection site", { exact: false });
+  const ladder = page.getByText("Within about a tenth of a point of a pro projection site.", { exact: true });
   await ladder.scrollIntoViewIfNeeded();
   await page.getByText(/We closed \d+% of the gap to the floor\./).waitFor();
   const pro = page.getByRole("button", { name: /Pro projection site \(Statz\.ai\)/ });
@@ -245,7 +246,10 @@ for (const [device, viewport, scale] of [["desktop", DESKTOP, 1], ["phone", PHON
   const link = await page.getByRole("link", { name: "Source" }).getAttribute("href");
   await page.waitForTimeout(1600); // fill animation
   const card = page.locator('[data-slot="card"]').filter({ has: ladder });
-  await card.screenshot({ path: `${OUT}ladder-${device}-dark.png` });
+  // the open note can hang below the card, so capture a bit past its bottom edge
+  const box = await card.boundingBox();
+  await page.screenshot({ path: `${OUT}ladder-${device}-dark.png`, fullPage: true,
+    clip: { x: box.x, y: box.y + (await page.evaluate(() => window.scrollY)), width: box.width, height: box.height + 140 } });
   console.log(`  [ladder ${device}] filled, pro note open, source ${link}`);
   if (link !== "https://statz.ai/nba/projections/accuracy") fail("ladder source link");
   await ctx.close();

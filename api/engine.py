@@ -461,8 +461,9 @@ class Engine:
                         "without him minus with him, this season and last combined (points "
                         "allowed per 100 possessions, + = worse without him), def_delta_shrunk = "
                         "def_delta * games_without / (games_without + 10), and key_defender = "
-                        "10+ games with him, 5+ without, shrunk >= 2. CONTEXT ONLY: the model "
-                        "doesn't use it.",
+                        "the one player per team the site shows ('Defense without him'): the "
+                        "biggest shrunk value among its rotation players with 10+ games with him, "
+                        "5+ without, shrunk >= 4. CONTEXT ONLY: the model doesn't use it.",
                 "teams": out}
 
     def defense_context(self, team_id: int, player_id: int) -> dict:

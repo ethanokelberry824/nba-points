@@ -78,7 +78,7 @@ function Marker({ m, open, setOpen }: { m: Mark; open: boolean; setOpen: (k: Mar
         <div
           role="note"
           className={cn(
-            "absolute bottom-full mb-1 w-64 rounded-md border bg-popover px-3 py-2 text-xs leading-relaxed text-popover-foreground shadow-md",
+            "absolute top-full z-20 mt-1 w-72 rounded-md border bg-popover px-3 py-2 text-xs leading-relaxed text-popover-foreground shadow-md",
             align,
           )}
         >
@@ -164,8 +164,9 @@ export function AccuracyLadder({ s }: { s: ModelStats }) {
       tip: (
         <>
           Statz.ai grades every projection publicly: {fmt(PRO.mae, 2)} points off across {PRO.games.toLocaleString("en-US")} games,{" "}
-          {PRO.period}. Different games and players from ours, so it&apos;s a ballpark, not a head-to-head. It likely uses
-          injury news, which ours doesn&apos;t.{" "}
+          {PRO.period}. Different games and players from ours, so it&apos;s a ballpark, not a head-to-head. Ours is scored
+          knowing who actually sat each night (from box scores), like switching the right players off on the Matchup page.
+          Statz predicts before tipoff from injury reports, so it&apos;s not a perfect head-to-head.{" "}
           <a href={PRO.url} target="_blank" rel="noreferrer" className="font-medium text-brand-ink underline-offset-2 hover:underline">
             Source
           </a>
@@ -186,11 +187,12 @@ export function AccuracyLadder({ s }: { s: ModelStats }) {
   const xFloor = pos(f.cheat_actual_minutes_mae);
 
   return (
-    <Card>
+    // overflow-visible: the marker notes can hang past the card edge instead of being cut off
+    <Card className="overflow-visible">
       <CardHeader>
         <CardDescription className="text-xs font-medium tracking-wide uppercase">The accuracy ladder</CardDescription>
         <CardTitle className="text-lg leading-snug text-balance sm:text-xl">
-          Within about a tenth of a point of a pro projection site, without injury news.
+          Within about a tenth of a point of a pro projection site.
         </CardTitle>
         <CardDescription>
           Average miss in points per game. Left is worse, right is better. Hover or tap a marker for details.

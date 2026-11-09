@@ -292,7 +292,8 @@ export default function Page() {
           <Section id="limits" n={7} title="What it can't know" icon={TriangleAlert}>
             <ul className="list-disc space-y-1.5 pl-5">
               <li>
-                <b>Injury news.</b> It has no news feed. If you know someone is out, switch them off on the Matchup page.
+                <b>Who&apos;s out tonight.</b> The site doesn&apos;t fetch injury reports, so switch players off yourself. The
+                test scores assume the right players are switched off.
               </li>
               <li>
                 <b>Shooting luck.</b> Even a model told his real minutes still misses by about 4.2 points. Whether the shots

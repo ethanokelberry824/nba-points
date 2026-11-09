@@ -8,20 +8,18 @@ import type { PredictResp, RotationPlayer, RotationTeam } from "@/lib/api";
 import { defenseWords, fmt, lastName, paceWords, signed } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-/** "Key defender" lines: context only, the model doesn't use them. Which players get one is
- * decided by the API (key_defender: 10+ games with him and 5+ without, this season and last,
- * shrunk value >= 2; rule in src/build_site_data.py). Up to 2, biggest first. */
-export function keyDefenders(opp: RotationTeam | undefined): RotationPlayer[] {
-  return (opp?.players ?? [])
-    .filter((p) => p.still_on_team && p.key_defender && p.def_delta_shrunk != null)
-    .sort((a, b) => (b.def_delta_shrunk ?? 0) - (a.def_delta_shrunk ?? 0))
-    .slice(0, 2);
+/** The "Defense without him" line: context only, the model doesn't use it. The API flags at
+ * most one player per team (key_defender: the biggest adjusted value among its rotation
+ * players with 10+ games with him and 5+ without, this season and last, adjusted >= 4;
+ * rule in src/build_site_data.py). */
+export function keyDefender(opp: RotationTeam | undefined): RotationPlayer | undefined {
+  return (opp?.players ?? []).find((p) => p.still_on_team && p.key_defender && p.def_delta != null);
 }
 
 /** "San Antonio Spurs" -> "Spurs", "Portland Trail Blazers" -> "Blazers" */
 const nickname = (teamName: string) => teamName.split(" ").slice(-1)[0];
 
-function KeyDefender({ p, teamName, isOut }: { p: RotationPlayer; teamName: string; isOut: boolean }) {
+function DefenseWithout({ p, teamName, isOut }: { p: RotationPlayer; teamName: string; isOut: boolean }) {
   return (
     <div
       className={cn(
@@ -32,12 +30,13 @@ function KeyDefender({ p, teamName, isOut }: { p: RotationPlayer; teamName: stri
       <ShieldAlert className={cn("mt-0.5 size-4 shrink-0 text-muted-foreground", isOut && "text-amber-700 dark:text-amber-300")} aria-hidden />
       <div className="min-w-0 space-y-1">
         <div className="flex flex-wrap items-baseline gap-x-2">
-          <span className="font-medium">Key defender</span>
+          <span className="font-medium">Defense without him</span>
           {isOut && <span className="text-xs font-medium text-amber-700 dark:text-amber-300">Out tonight</span>}
         </div>
         <p className="leading-snug">
-          {nickname(teamName)} allowed {signed(p.def_delta_shrunk ?? null)} points per 100 possessions without {lastName(p.name)} (this
-          season and last, {p.games_without} games without him).
+          {nickname(teamName)} allowed {fmt(p.def_delta ?? null)} more points per 100 possessions without {lastName(p.name)} (
+          {p.games_without} games this season and last; about {signed(p.def_delta_shrunk ?? null)} after adjusting for the small
+          sample).
         </p>
         <p className="text-xs text-muted-foreground">Context only: the model doesn&apos;t use this.</p>
       </div>
@@ -88,7 +87,7 @@ export function OpponentCard({
 
   const k = data.key_numbers;
   const oppStep = data.breakdown.steps.find((s) => s.key === "opponent");
-  const keys = rotation?.team_id === data.opponent.id ? keyDefenders(rotation) : [];
+  const def = rotation?.team_id === data.opponent.id ? keyDefender(rotation) : undefined;
 
   return (
     <Card className="h-full">
@@ -124,13 +123,7 @@ export function OpponentCard({
           <p className="text-xs text-muted-foreground">Possessions per 48 minutes. More possessions, more chances to score.</p>
         </div>
 
-        {keys.length > 0 && (
-          <div className="space-y-2">
-            {keys.map((p) => (
-              <KeyDefender key={p.player_id} p={p} teamName={data.opponent.name} isOut={oppOut.includes(p.player_id)} />
-            ))}
-          </div>
-        )}
+        {def && <DefenseWithout p={def} teamName={data.opponent.name} isOut={oppOut.includes(def.player_id)} />}
 
         <div className="grid grid-cols-2 gap-3 border-t pt-4 text-sm">
           <div>

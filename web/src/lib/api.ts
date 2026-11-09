@@ -69,7 +69,8 @@ export type RotationPlayer = {
   def_delta_shrunk?: number | null;
   games_without?: number;
   games_with?: number;
-  /** 10+ games with him, 5+ without, shrunk >= 2 (rule in src/build_site_data.py) */
+  /** the one "Defense without him" line for this team: biggest shrunk value among its rotation
+   * players with 10+ games with him, 5+ without, shrunk >= 4 (rule in src/build_site_data.py) */
   key_defender?: boolean;
 };
 

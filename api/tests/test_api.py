@@ -135,7 +135,9 @@ def test_def_delta_by_hand(client, engine, test_players, game_date):
         for p in o["players"]:
             assert {"def_delta", "def_delta_shrunk", "games_without", "games_with", "key_defender"} <= set(p)
             if p["key_defender"]:
-                assert p["games_with"] >= 10 and p["games_without"] >= 5 and p["def_delta_shrunk"] >= 2
+                assert p["games_with"] >= 10 and p["games_without"] >= 5 and p["def_delta_shrunk"] >= 4
+                assert p["still_on_team"]
+        assert sum(p["key_defender"] for p in o["players"]) <= 1      # at most one line per team
         cand = [p for p in o["players"] if p["games_without"] > 0]
         if not cand:
             continue

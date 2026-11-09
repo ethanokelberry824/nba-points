@@ -33,10 +33,10 @@ Reference docs in `docs/`:
 - [x] Streamlit app (`app/streamlit_app.py`, Nov 8): runs locally, match test PASS (`python src/check_pregame.py`). See "Site (built Nov 8)" below.
 - [x] FastAPI backend for the Next.js site (`api/`, Nov 8): 9 endpoints, 10 pytest tests PASS (`pytest api/tests -s`). See "API (built Nov 8)" below.
 - [x] Local git repo (Nov 8): `git init -b main`, 3 commits on main, .gitignore checked (163 files, 18 MB, largest 0.9 MB, no secrets). README.md rewritten, DEPLOY.md written (Render + Vercel click-by-click). CORS_ORIGINS now strips a trailing slash. docs/assignment.md and docs/class_example_housing.py are gitignored (class materials, kept local only, scrubbed from history).
-- [ ] Push to GitHub: gh CLI wasn't installed, so Ethan runs `brew install gh && gh auth login && gh repo create nba-points --public --source=. --remote=origin --push` (also in DEPLOY.md step 0)
+- [x] Pushed to GitHub (Nov 8): https://github.com/ethanokelberry824/nba-points (public, branch main)
 - [ ] Deploy the API on Render (DEPLOY.md a: Docker, root dir empty, Dockerfile path ./api/Dockerfile, context `.`, free, health check /health)
 - [x] Next.js front end, all 4 pages (`web/`, Nov 8): Matchup, vs Every Team, Model Performance, How It Works. Lint + build PASS, Playwright + axe check PASS on every page at desktop/phone in dark/light (`npm run screenshots`). See "Front end (built Nov 8)" below.
-- [ ] Add the GitHub URL to `GITHUB_URL` in `web/src/app/how-it-works/page.tsx` once the repo exists
+- [x] GitHub URL in `GITHUB_URL` on the How It Works page (Nov 8)
 - [ ] Deploy the front end on Vercel (root directory `web/`, set `NEXT_PUBLIC_API_URL` to the hosted API; add the Vercel URL to the API's `CORS_ORIGINS`)
 - [ ] Streamlit Cloud deploy of the backup app (optional once the Next.js site is live)
 - [ ] Slides

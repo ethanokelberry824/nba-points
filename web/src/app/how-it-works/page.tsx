@@ -23,7 +23,7 @@ export const metadata: Metadata = {
 };
 
 const PERSONAL_SITE = "https://ethanokelberry824.github.io";
-const GITHUB_URL = ""; // add the repo link once it exists
+const GITHUB_URL = "https://github.com/ethanokelberry824/nba-points";
 
 const SECTIONS = [
   { id: "question", title: "The question", icon: HelpCircle },

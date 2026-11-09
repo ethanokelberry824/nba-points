@@ -58,7 +58,7 @@ figures/           charts from the notebooks
 api/               FastAPI backend + Dockerfile + tests
 web/               Next.js front end
 app/               Streamlit backup site
-docs/              project proposal and assignment
+docs/              project proposal
 ```
 
 ## Run it locally

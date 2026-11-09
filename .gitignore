@@ -21,3 +21,7 @@ data/processed/features.csv
 .env
 .env.*
 !.env.example
+
+# class materials: kept on the laptop, not published
+docs/assignment.md
+docs/class_example_housing.py

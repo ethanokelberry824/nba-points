@@ -46,7 +46,9 @@ app = FastAPI(
 )
 
 origins = ["http://localhost:3000"] + [
-    o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
+    # rstrip("/"): browsers send the origin with no trailing slash, so a pasted
+    # "https://x.vercel.app/" would never match
+    o.strip().rstrip("/") for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
 app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["GET", "POST"],
                    allow_headers=["*"])
 

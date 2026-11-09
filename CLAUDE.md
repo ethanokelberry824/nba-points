@@ -32,7 +32,9 @@ Reference docs in `docs/`:
 - [x] Models part 2b: final fit, 2025-26 test set scored ONCE, models saved (`02_models.ipynb`, Nov 8; `results/test_results.csv`, figures 10-14, `models/final_model.joblib` + `models/deploy_model.joblib`, `src/predict.py`)
 - [x] Streamlit app (`app/streamlit_app.py`, Nov 8): runs locally, match test PASS (`python src/check_pregame.py`). See "Site (built Nov 8)" below.
 - [x] FastAPI backend for the Next.js site (`api/`, Nov 8): 9 endpoints, 10 pytest tests PASS (`pytest api/tests -s`). See "API (built Nov 8)" below.
-- [ ] GitHub repo (project isn't a git repo yet), then deploy the API (Render or HF Spaces, `api/Dockerfile`)
+- [x] Local git repo (Nov 8): `git init -b main`, 2 commits on main, .gitignore checked (164 files, 18 MB, largest 0.9 MB, no secrets). README.md rewritten, DEPLOY.md written (Render + Vercel click-by-click). CORS_ORIGINS now strips a trailing slash.
+- [ ] Push to GitHub: gh CLI wasn't installed, so Ethan runs `brew install gh && gh auth login && gh repo create nba-points --public --source=. --remote=origin --push` (also in DEPLOY.md step 0)
+- [ ] Deploy the API on Render (DEPLOY.md a: Docker, root dir empty, Dockerfile path ./api/Dockerfile, context `.`, free, health check /health)
 - [x] Next.js front end, all 4 pages (`web/`, Nov 8): Matchup, vs Every Team, Model Performance, How It Works. Lint + build PASS, Playwright + axe check PASS on every page at desktop/phone in dark/light (`npm run screenshots`). See "Front end (built Nov 8)" below.
 - [ ] Add the GitHub URL to `GITHUB_URL` in `web/src/app/how-it-works/page.tsx` once the repo exists
 - [ ] Deploy the front end on Vercel (root directory `web/`, set `NEXT_PUBLIC_API_URL` to the hosted API; add the Vercel URL to the API's `CORS_ORIGINS`)

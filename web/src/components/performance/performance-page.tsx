@@ -20,6 +20,7 @@ import {
 
 import { AXIS, ChartTooltipBox, TooltipRow } from "@/components/charts";
 import { ApiErrorCard, PageHeader, Takeaway } from "@/components/page-shell";
+import { AccuracyLadder } from "@/components/performance/accuracy-ladder";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { GroupRow, Meta, ModelStats, Version2 } from "@/lib/api";
@@ -432,57 +433,6 @@ function PredVsActual({ s }: { s: ModelStats }) {
   );
 }
 
-// ------------------------------------------------------------------ how low can it go
-
-function Floor({ s }: { s: ModelStats }) {
-  const f = s.floor;
-  const rows = [
-    { name: "Last 5 games rule", v: f.baseline_l5_mae, color: BASE, op: 0.5 },
-    { name: "Our model", v: f.model_mae, color: MODEL, op: 1 },
-    { name: "Cheating model", v: f.cheat_actual_minutes_mae, color: "var(--color-pred)", op: 1 },
-  ].map((r, i) => ({ ...r, i }));
-  const closed = ((f.baseline_l5_mae - f.model_mae) / (f.baseline_l5_mae - f.cheat_actual_minutes_mae)) * 100;
-  return (
-    <ChartCard
-      title="How low can it go?"
-      description={`The "cheating model" is told how many minutes he really played, which nobody knows before the game (${f.period}, ${n0(f.games)} games).`}
-      takeaway={
-        <>
-          Even knowing his real minutes, it still misses by {fmt(f.cheat_actual_minutes_mae, 2)} points. That leftover is
-          mostly shooting luck: whether the shots go in on a given night. Our model closes about {fmt(closed, 0)}% of the gap
-          down to that floor; the rest is minutes surprises like injuries, blowouts and foul trouble.
-        </>
-      }
-    >
-      <div style={{ height: rows.length * 62 + 30 }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={rows} layout="vertical" margin={{ top: 0, right: 4, bottom: 0, left: 0 }} barCategoryGap="30%">
-            <CartesianGrid horizontal={false} stroke="var(--color-chart-grid)" />
-            <XAxis type="number" domain={[0, 6]} ticks={[0, 1, 2, 3, 4, 5, 6]} {...AXIS} />
-            <YAxis yAxisId="n" type="category" dataKey="name" width={112} {...AXIS} interval={0} />
-            <YAxis
-              yAxisId="v"
-              orientation="right"
-              type="category"
-              dataKey="i"
-              width={40}
-              {...AXIS}
-              interval={0}
-              tickFormatter={(i: number) => fmt(rows[i]?.v, 2)}
-              tick={{ fontSize: 12, fill: "var(--color-foreground)", fontWeight: 500 }}
-            />
-            <Bar yAxisId="n" dataKey="v" radius={3} isAnimationActive={false}>
-              {rows.map((r) => (
-                <Cell key={r.i} fill={r.color} fillOpacity={r.op} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-    </ChartCard>
-  );
-}
-
 // ------------------------------------------------------------------ feature importance (bar list)
 
 function Importance({ s }: { s: ModelStats }) {
@@ -500,7 +450,7 @@ function Importance({ s }: { s: ModelStats }) {
         </>
       }
     >
-      <ul className="space-y-1.5">
+      <ul className="grid gap-x-8 gap-y-1.5 md:grid-cols-2 md:grid-flow-col md:grid-rows-6">
         {top.map((f) => (
           <li key={f.feature} className="grid grid-cols-[1fr_3.25rem] items-center gap-3 text-sm">
             <div className="relative h-7 overflow-hidden rounded-md">
@@ -702,6 +652,7 @@ export function PerformancePage() {
       ) : (
         <>
           <KpiRow s={s} />
+          <AccuracyLadder s={s} />
           {s.version_2 && <Version2Card v={s.version_2} />}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
             <div className="lg:col-span-7">
@@ -720,13 +671,10 @@ export function PerformancePage() {
               <PredVsActual s={s} />
             </div>
             <div className="lg:col-span-5">
-              <Floor s={s} />
-            </div>
-            <div className="lg:col-span-7">
-              <Importance s={s} />
-            </div>
-            <div className="lg:col-span-5">
               <Live s={s} />
+            </div>
+            <div className="lg:col-span-12">
+              <Importance s={s} />
             </div>
           </div>
         </>

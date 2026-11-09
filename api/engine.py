@@ -72,7 +72,7 @@ class Engine:
         self.bands = json.loads((site_dir / "error_bands.json").read_text())
         stats_path = site_dir / "model_stats.json"
         self.model_stats = json.loads(stats_path.read_text()) if stats_path.exists() else None
-        # defense with / without each player this season (context only, NOT a model feature)
+        # defense with / without each player, this season + last (context only, NOT a model feature)
         onoff_path = site_dir / "def_onoff.csv"
         self.onoff = (pd.read_csv(onoff_path).set_index(["TEAM_ID", "PLAYER_ID"])
                       if onoff_path.exists() else None)
@@ -458,19 +458,24 @@ class Engine:
                         "Players with still_on_team = false were traded away and already count "
                         "as out; don't show a toggle for them. "
                         "Opponent players also get def_delta = the opponent's defensive rating "
-                        "without him minus with him this season (points allowed per 100 "
-                        "possessions, + = worse without him) and games_without. CONTEXT ONLY: "
-                        "the model doesn't use it; show it only when games_without >= 5.",
+                        "without him minus with him, this season and last combined (points "
+                        "allowed per 100 possessions, + = worse without him), def_delta_shrunk = "
+                        "def_delta * games_without / (games_without + 10), and key_defender = "
+                        "10+ games with him, 5+ without, shrunk >= 2. CONTEXT ONLY: the model "
+                        "doesn't use it.",
                 "teams": out}
 
     def defense_context(self, team_id: int, player_id: int) -> dict:
-        """His team's defense with vs without him this season (data/site/def_onoff.csv)."""
+        """His team's defense with vs without him, this season + last (data/site/def_onoff.csv,
+        rule and shrink in src/build_site_data.py: defense_on_off)."""
         key = (team_id, player_id)
         if self.onoff is None or key not in self.onoff.index:
-            return {"def_delta": None, "games_without": 0, "games_with": 0}
+            return {"def_delta": None, "def_delta_shrunk": None, "games_without": 0,
+                    "games_with": 0, "key_defender": False}
         x = self.onoff.loc[key]
-        return {"def_delta": num(x["def_delta"], 1), "games_without": int(x["games_without"]),
-                "games_with": int(x["games_with"])}
+        return {"def_delta": num(x["def_delta"], 2), "def_delta_shrunk": num(x["def_delta_shrunk"], 2),
+                "games_without": int(x["games_without"]), "games_with": int(x["games_with"]),
+                "key_defender": bool(x["key_defender"])}
 
     def history(self, player_id: int) -> dict:
         self.check_player(player_id)

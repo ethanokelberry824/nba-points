@@ -17,8 +17,9 @@ needs for current-season predictions and saves them to data/site/:
     error_bands.json    2025-26 test-set misses (actual - predicted) of the model the site
                         uses (version 2) by scoring tier, for the API's "likely range"
                         (middle 60% of misses for players like him)
-    def_onoff.csv       context only, NOT a model feature: for each current-season player,
-                        his team's defensive rating without him minus with him this season
+    def_onoff.csv       context only, NOT a model feature: for each player-team, the team's
+                        defensive rating without him minus with him, this season + last
+                        (raw and shrunk, plus the "key defender" flag the site shows)
 
 The model performance page's numbers come from src/build_model_stats.py.
 """
@@ -116,20 +117,31 @@ def accuracy(test: pd.DataFrame, version: str) -> dict:
     }
 
 
-def defense_on_off(players: pd.DataFrame, teams: pd.DataFrame, season: str) -> pd.DataFrame:
+# "Key defender" context on the Matchup page (one rule, used by the API and printed below)
+KEY_DEF_MIN_WITH = 10       # games he played for the team (this season + last)
+KEY_DEF_MIN_WITHOUT = 5     # games the team played without him, after his first game for them
+KEY_DEF_SHRINK_K = 10       # shrink toward 0: delta * without / (without + 10), like the model's blends
+KEY_DEF_MIN_SHRUNK = 2.0    # show the line only when the shrunk value is at least this
+
+
+def defense_on_off(players: pd.DataFrame, teams: pd.DataFrame, seasons: list[str]) -> pd.DataFrame:
     """Context for the site, NOT a model feature (it didn't beat noise as one, see
-    results/search/v2_experiments/). For each player on each team this season:
+    results/search/v2_experiments/). For each player on each team, over `seasons`
+    combined (the site uses this season + last):
 
-        def_delta = team's defensive rating in games WITHOUT him minus games WITH him
-                    (points allowed per 100 possessions, possession-weighted; + = the
-                    team defends worse without him)
+        def_delta        = team's defensive rating in games WITHOUT him minus games WITH
+                           him (points allowed per 100 possessions, possession-weighted;
+                           + = the team defends worse without him). Raw.
+        def_delta_shrunk = def_delta * games_without / (games_without + 10): pulled toward 0
+                           when he's missed only a few games, like the model's blends
+        key_defender     = shown on the site: 10+ games with him, 5+ without, shrunk >= 2
 
-    "Without" only counts the team's games after his first game for that team (so a
-    player who joined late isn't "missing" the games before he arrived). Raw
-    difference, not shrunk: the site only shows it once he's missed 5+ games.
-    Same logic as results/search/v2_experiments/onoff.py, using season totals.
+    Same team only (games he played for another team don't count), and "without" only
+    counts the team's games after his first game for that team, so a player who joined
+    late isn't "missing" the games before he arrived. Logic from
+    results/search/v2_experiments/onoff.py, using totals.
     """
-    t = teams[teams["SEASON"] == season]
+    t = teams[teams["SEASON"].isin(seasons)]
     opp = t[["GAME_ID", "TEAM_ID", "PTS", "FGA", "OREB", "TOV", "FTA"]].rename(
         columns=lambda c: c if c == "GAME_ID" else f"O_{c}")
     t = t.merge(opp, on="GAME_ID")
@@ -137,9 +149,9 @@ def defense_on_off(players: pd.DataFrame, teams: pd.DataFrame, season: str) -> p
     # possessions: same estimate as build_team_features (average of both teams)
     t["POSS"] = ((t["FGA"] - t["OREB"] + t["TOV"] + 0.44 * t["FTA"])
                  + (t["O_FGA"] - t["O_OREB"] + t["O_TOV"] + 0.44 * t["O_FTA"])) / 2
-    t = t.sort_values(["TEAM_ID", "GAME_DATE"])
+    t = t.sort_values(["TEAM_ID", "GAME_DATE", "GAME_ID"])
 
-    pl = players[players["SEASON"] == season][["PLAYER_ID", "TEAM_ID", "GAME_ID"]].assign(on=1)
+    pl = players[players["SEASON"].isin(seasons)][["PLAYER_ID", "TEAM_ID", "GAME_ID"]].assign(on=1)
     rows = []
     for team, g in t.groupby("TEAM_ID"):
         gids = g["GAME_ID"].to_numpy()
@@ -162,7 +174,13 @@ def defense_on_off(players: pd.DataFrame, teams: pd.DataFrame, season: str) -> p
     out = pd.concat(rows, ignore_index=True)
     out["def_delta"] = out["def_rtg_without"] - out["def_rtg_with"]
     out.loc[out["games_without"] == 0, ["def_rtg_without", "def_delta"]] = np.nan
-    return out.round({"def_rtg_with": 2, "def_rtg_without": 2, "def_delta": 2})
+    gw = out["games_without"]
+    out["def_delta_shrunk"] = out["def_delta"] * gw / (gw + KEY_DEF_SHRINK_K)
+    out["key_defender"] = ((out["games_with"] >= KEY_DEF_MIN_WITH)
+                           & (gw >= KEY_DEF_MIN_WITHOUT)
+                           & (out["def_delta_shrunk"] >= KEY_DEF_MIN_SHRUNK))
+    out["seasons"] = " + ".join(seasons)
+    return out.round({"def_rtg_with": 2, "def_rtg_without": 2, "def_delta": 2, "def_delta_shrunk": 2})
 
 
 def main() -> None:
@@ -196,8 +214,8 @@ def main() -> None:
     pl = pl.round({"ppg": 1, "mpg": 1}).reset_index().sort_values("PLAYER_NAME")
     pl.to_csv(SITE_DIR / "players.csv", index=False, date_format="%Y-%m-%d")
 
-    # defense with / without each player this season (context only, not a model feature)
-    onoff = defense_on_off(players, teams, CURRENT)
+    # defense with / without each player, this season + last (context only, not a model feature)
+    onoff = defense_on_off(players, teams, SEASONS[-2:])
     onoff.to_csv(SITE_DIR / "def_onoff.csv", index=False)
 
     # headline accuracy = version 1's pre-committed test score; version 2 (the model the
@@ -224,12 +242,16 @@ def main() -> None:
     print(f"  {len(pl)} players, {len(tl)} teams, {len(p):,} player-game rows, {len(t):,} team-game rows")
     print("  accuracy (v1, pre-committed):", {k: v for k, v in meta.items() if k.startswith(("test", "pct", "base"))})
     print("  accuracy (v2, second look):", {k: v for k, v in meta["v2"].items() if k.startswith(("test_mae", "pct"))})
-    # the site's "Key defender" rule (web/src/components/matchup/opponent-card.tsx)
-    shown = onoff[(onoff["games_without"] >= 5) & (onoff["games_with"] >= 5)
-                  & (onoff["def_delta"] >= 2)].merge(
-        pl[["PLAYER_ID", "PLAYER_NAME", "TEAM", "TEAM_ID"]], on=["PLAYER_ID", "TEAM_ID"])
-    print(f"  def_onoff: {len(onoff)} player-teams, {len(shown)} 'key defender' lines "
-          f"(def_delta >= 2, 5+ games without and with him, still on that team)")
+    # who gets a "Key defender" line: flagged AND still on that team (his latest team)
+    shown = (onoff[onoff["key_defender"]]
+             .merge(pl[["PLAYER_ID", "PLAYER_NAME", "TEAM", "TEAM_ID"]], on=["PLAYER_ID", "TEAM_ID"])
+             .sort_values("def_delta_shrunk", ascending=False))
+    print(f"  def_onoff ({onoff['seasons'].iloc[0]}): {len(onoff)} player-teams, "
+          f"{len(shown)} 'key defender' lines ({KEY_DEF_MIN_WITH}+ games with him, "
+          f"{KEY_DEF_MIN_WITHOUT}+ without, shrunk >= {KEY_DEF_MIN_SHRUNK}, still on that team):")
+    cols = ["PLAYER_NAME", "TEAM", "games_with", "games_without", "def_rtg_with",
+            "def_rtg_without", "def_delta", "def_delta_shrunk"]
+    print("    " + shown[cols].to_string(index=False).replace("\n", "\n    "))
     print("  likely range (20th to 80th pct of misses):",
           {k: (v["p20"], v["p80"]) for k, v in bands["bands"].items()})
 

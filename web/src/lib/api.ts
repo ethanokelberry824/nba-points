@@ -63,10 +63,14 @@ export type RotationPlayer = {
   last_game: string;
   missed_last_team_game: boolean;
   /** opponent players only. Context, NOT a model input: his team's defensive rating without him
-   * minus with him this season (+ = they defend worse without him). Show only with 5+ games without. */
+   * minus with him, this season and last combined (+ = they defend worse without him). */
   def_delta?: number | null;
+  /** def_delta * games_without / (games_without + 10): what the site shows */
+  def_delta_shrunk?: number | null;
   games_without?: number;
   games_with?: number;
+  /** 10+ games with him, 5+ without, shrunk >= 2 (rule in src/build_site_data.py) */
+  key_defender?: boolean;
 };
 
 export type RotationTeam = {

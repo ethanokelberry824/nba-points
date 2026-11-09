@@ -8,23 +8,13 @@ import type { PredictResp, RotationPlayer, RotationTeam } from "@/lib/api";
 import { defenseWords, fmt, lastName, paceWords, signed } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-/** "Key defender" lines: context only, the model doesn't use them. Shown when the opponent
- * defends at least 2 points per 100 possessions worse without him, and there are 5+ games
- * on each side of the comparison (raw, unshrunk numbers are very noisy before that). */
-const KEY_DEF_DELTA = 2;
-const KEY_DEF_MIN_GAMES = 5;
-
+/** "Key defender" lines: context only, the model doesn't use them. Which players get one is
+ * decided by the API (key_defender: 10+ games with him and 5+ without, this season and last,
+ * shrunk value >= 2; rule in src/build_site_data.py). Up to 2, biggest first. */
 export function keyDefenders(opp: RotationTeam | undefined): RotationPlayer[] {
   return (opp?.players ?? [])
-    .filter(
-      (p) =>
-        p.still_on_team &&
-        p.def_delta != null &&
-        p.def_delta >= KEY_DEF_DELTA &&
-        (p.games_without ?? 0) >= KEY_DEF_MIN_GAMES &&
-        (p.games_with ?? 0) >= KEY_DEF_MIN_GAMES,
-    )
-    .sort((a, b) => (b.def_delta ?? 0) - (a.def_delta ?? 0))
+    .filter((p) => p.still_on_team && p.key_defender && p.def_delta_shrunk != null)
+    .sort((a, b) => (b.def_delta_shrunk ?? 0) - (a.def_delta_shrunk ?? 0))
     .slice(0, 2);
 }
 
@@ -46,8 +36,8 @@ function KeyDefender({ p, teamName, isOut }: { p: RotationPlayer; teamName: stri
           {isOut && <span className="text-xs font-medium text-amber-700 dark:text-amber-300">Out tonight</span>}
         </div>
         <p className="leading-snug">
-          {nickname(teamName)} allow {signed(p.def_delta ?? null)} points per 100 possessions without {lastName(p.name)} this season (
-          {p.games_without} games).
+          {nickname(teamName)} allowed {signed(p.def_delta_shrunk ?? null)} points per 100 possessions without {lastName(p.name)} (this
+          season and last, {p.games_without} games without him).
         </p>
         <p className="text-xs text-muted-foreground">Context only: the model doesn&apos;t use this.</p>
       </div>

@@ -27,7 +27,7 @@ from conftest import ROOT, other_team
 
 from build_features import FEATURES  # noqa: E402
 from predict import predict_points  # noqa: E402
-from pregame import pregame_features  # noqa: E402
+from pregame import pregame_features, seasons_back  # noqa: E402
 
 
 # ---------------------------------------------------------------- the original match test
@@ -122,37 +122,44 @@ def test_rotation_shots_feed_the_features(client, engine, test_players, game_dat
 
 def test_def_delta_by_hand(client, engine, test_players, game_date):
     """Opponent players' def_delta == his team's points allowed per 100 possessions in games
-    he missed (after his first game for them) minus games he played, from plain loops."""
+    he missed (after his first game for them) minus games he played, this season + last,
+    same team only, from plain loops. Plus the shrink and the key_defender rule."""
     teams, players = engine.teams, engine.players
-    t = teams[teams["SEASON"] == engine.season]
+    seasons = seasons_back(engine.season, 1)
+    t = teams[teams["SEASON"].isin(seasons)]
     checked = 0
     for pid, team_id in test_players:
         opp = other_team(engine, team_id, k=2)
         rot = client.get("/rotations", params={"player_id": pid, "opp_id": opp, "date": game_date}).json()
         o = [x for x in rot["teams"] if x["side"] == "opponent"][0]
         for p in o["players"]:
-            assert {"def_delta", "games_without", "games_with"} <= set(p)
+            assert {"def_delta", "def_delta_shrunk", "games_without", "games_with", "key_defender"} <= set(p)
+            if p["key_defender"]:
+                assert p["games_with"] >= 10 and p["games_without"] >= 5 and p["def_delta_shrunk"] >= 2
         cand = [p for p in o["players"] if p["games_without"] > 0]
         if not cand:
             continue
-        p = cand[0]
-        games = t[t["TEAM_ID"] == opp].sort_values("GAME_DATE")
-        mine = set(players[(players["PLAYER_ID"] == p["player_id"]) & (players["TEAM_ID"] == opp)]["GAME_ID"])
-        tot = {"with": [0.0, 0.0], "without": [0.0, 0.0]}
+        p = max(cand, key=lambda p: p["games_without"])
+        games = t[t["TEAM_ID"] == opp].sort_values(["GAME_DATE", "GAME_ID"])
+        mine = set(players[(players["PLAYER_ID"] == p["player_id"]) & (players["TEAM_ID"] == opp)
+                           & players["SEASON"].isin(seasons)]["GAME_ID"])
+        tot = {"with": [0.0, 0.0, 0], "without": [0.0, 0.0, 0]}
         seen = False
         for g in games.itertuples():
             other = t[(t["GAME_ID"] == g.GAME_ID) & (t["TEAM_ID"] != opp)].iloc[0]
             poss = ((g.FGA - g.OREB + g.TOV + 0.44 * g.FTA)
                     + (other.FGA - other.OREB + other.TOV + 0.44 * other.FTA)) / 2
-            if g.GAME_ID in mine:
-                tot["with"][0] += other.PTS
-                tot["with"][1] += poss
-                seen = True
-            elif seen:
-                tot["without"][0] += other.PTS
-                tot["without"][1] += poss
+            side = "with" if g.GAME_ID in mine else ("without" if seen else None)
+            seen = seen or g.GAME_ID in mine
+            if side:
+                tot[side][0] += other.PTS
+                tot[side][1] += poss
+                tot[side][2] += 1
         delta = 100 * tot["without"][0] / tot["without"][1] - 100 * tot["with"][0] / tot["with"][1]
+        n = tot["without"][2]
+        assert (p["games_with"], p["games_without"]) == (tot["with"][2], n), p
         assert p["def_delta"] == pytest.approx(delta, abs=0.051), p
+        assert p["def_delta_shrunk"] == pytest.approx(delta * n / (n + 10), abs=0.051), p
         checked += 1
     assert checked >= 1
 

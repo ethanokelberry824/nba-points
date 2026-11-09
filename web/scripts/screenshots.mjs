@@ -27,7 +27,8 @@ const WEB = process.env.WEB_URL ?? "http://localhost:3000";
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const OUT = new URL("../screenshots/", import.meta.url).pathname;
 mkdirSync(OUT, { recursive: true });
-for (const f of readdirSync(OUT)) if (f.endsWith(".png")) unlinkSync(OUT + f);
+// clear old screenshots (share-image.png is made separately, keep it)
+for (const f of readdirSync(OUT)) if (f.endsWith(".png") && f !== "share-image.png") unlinkSync(OUT + f);
 
 const players = await (await fetch(`${API}/players`)).json();
 const regulars = players.filter((p) => p.games >= 3);
@@ -46,8 +47,8 @@ const fail = (msg) => {
   console.log(`  FAIL: ${msg}`);
 };
 
-async function newPage({ viewport = DESKTOP, theme = "dark", scale = 1, name = "page" } = {}) {
-  const ctx = await browser.newContext({ viewport, deviceScaleFactor: scale, colorScheme: theme });
+async function newPage({ viewport = DESKTOP, theme = "dark", scale = 1, name = "page", hasTouch = false } = {}) {
+  const ctx = await browser.newContext({ viewport, deviceScaleFactor: scale, colorScheme: theme, hasTouch });
   await ctx.addInitScript((t) => localStorage.setItem("theme", t), theme);
   const page = await ctx.newPage();
   page.on("console", (m) => m.type() === "error" && errors.push(`${name}: ${m.text()}`));
@@ -187,9 +188,12 @@ if (luka && wemby && sas) {
   await settled(page, "Predicted points");
   await openOpponent(page);
   const chip = await switchOff(page, wemby.name);
-  const keyLine = await page.getByText("Key defender", { exact: true }).count();
+  const keyLine = page.getByText(/points per 100 possessions without Wembanyama/);
+  const keyText = (await keyLine.count()) ? await keyLine.first().innerText() : null;
+  const highlighted = await page.getByText("Out tonight", { exact: true }).count();
   await pageChecks(page, "v2 wemby out", { minBars: 8 });
-  console.log(`  [v2 wemby] Luka vs SAS with Wembanyama off: "${chip}", key defender line shown: ${keyLine > 0}`);
+  console.log(`  [v2 wemby] Luka vs SAS with Wembanyama off: "${chip}" | key defender: ${keyText} | highlighted: ${highlighted > 0}`);
+  if (!keyText || !highlighted) fail("Wembanyama key defender line missing or not highlighted");
   await snap(page, "v2-matchup-wemby-out-vs-sas-desktop-dark");
   await ctx.close();
 } else fail("Luka, Wembanyama or SAS not found");
@@ -202,8 +206,8 @@ if (luka) {
     const rot = await (await fetch(`${API}/rotations?player_id=${luka.id}&opp_id=${t.id}&date=${meta.default_date}`)).json();
     const opp = rot.teams.find((x) => x.side === "opponent");
     const p = opp.players
-      .filter((p) => p.still_on_team && p.def_delta >= 2 && p.games_without >= 5 && p.games_with >= 5)
-      .sort((a, b) => b.def_delta - a.def_delta)[0];
+      .filter((p) => p.still_on_team && p.key_defender)
+      .sort((a, b) => b.def_delta_shrunk - a.def_delta_shrunk)[0];
     if (p) {
       found = { team: t, p };
       break;
@@ -223,6 +227,28 @@ if (luka) {
     await snap(page, `v2-matchup-key-defender-${found.team.abbr}-desktop-dark`);
     await ctx.close();
   } else console.log("  [v2 key defender] no opponent has a key defender line right now");
+}
+
+// Model Performance: the accuracy ladder fills on scroll and the pro marker's note opens on hover / tap
+for (const [device, viewport, scale] of [["desktop", DESKTOP, 1], ["phone", PHONE, 2]]) {
+  const { ctx, page } = await newPage({ viewport, scale, name: `ladder-${device}`, hasTouch: device === "phone" });
+  await page.goto(`${WEB}/model-performance`);
+  await settled(page, "Every model on the test season");
+  const ladder = page.getByText("Within about a tenth of a point of a pro projection site", { exact: false });
+  await ladder.scrollIntoViewIfNeeded();
+  await page.getByText(/We closed \d+% of the gap to the floor\./).waitFor();
+  const pro = page.getByRole("button", { name: /Pro projection site \(Statz\.ai\)/ });
+  if (device === "desktop") await pro.hover();
+  else await pro.tap();
+  const note = page.getByText("Statz.ai grades every projection publicly", { exact: false });
+  await note.waitFor({ timeout: 5000 });
+  const link = await page.getByRole("link", { name: "Source" }).getAttribute("href");
+  await page.waitForTimeout(1600); // fill animation
+  const card = page.locator('[data-slot="card"]').filter({ has: ladder });
+  await card.screenshot({ path: `${OUT}ladder-${device}-dark.png` });
+  console.log(`  [ladder ${device}] filled, pro note open, source ${link}`);
+  if (link !== "https://statz.ai/nba/projections/accuracy") fail("ladder source link");
+  await ctx.close();
 }
 
 // Copy link: the copied URL reopens the same matchup (same side, players out, number)

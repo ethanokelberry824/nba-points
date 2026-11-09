@@ -2,7 +2,7 @@
 
 Pick an NBA player, an opponent and who's sitting out tonight, and get a prediction of how many points he scores.
 
-This is Ethan Okelberry's final project for Intro to AI at CSUSM (Fall 2026). It's a supervised regression on tabular data: one row per player per game, 33 features built only from games before the one being predicted, and the target is points scored.
+This is Ethan Okelberry's final project for Intro to AI at CSUSM (Fall 2026). It's a supervised regression on tabular data: one row per player per game, 35 features built only from games before the one being predicted, and the target is points scored.
 
 ![Matchup page](web/screenshots/matchup-desktop-dark.png)
 
@@ -21,8 +21,20 @@ The test season is 2025-26 (19,832 player games). The model never saw it during 
 
 - It beats the "last 5 games" rule by 0.38 points per game (about 7%), and the ranking matches cross-validation.
 - 39% of predictions land within 3 points, 60% within 5, and 10% miss by 10 or more.
-- **Live tracker, 2026-27 season:** the deployed model has never seen these games. Through Nov 8, 2026 (2,383 games) it scores an MAE of 4.86 vs 5.34 for the last-5 rule. The site's Model Performance page updates this every time the data is refreshed.
-- Things that didn't help: a two-stage model (predict minutes, then points), extra interaction features, splines, recency weighting. Details are in `notebooks/02_models.ipynb` and the site's How It Works page.
+- **Live tracker, 2026-27 season:** the deployed model has never seen these games. Through Nov 8, 2026 (2,383 games) version 2 scores an MAE of 4.853 (version 1: 4.855) vs 5.342 for the last-5 rule. The site's Model Performance page updates this every time the data is refreshed.
+- Things that didn't help: a two-stage model (predict minutes, then points), extra interaction features, splines, recency weighting, "missing defender" features (blocks, steals, rebounds, plus-minus, with/without defensive rating). Details are in `notebooks/02_models.ipynb` and the site's How It Works page.
+
+### Version 2 (Nov 9): who's out, by shots and not just minutes
+
+Version 1 knew how many minutes of a player's teammates were missing, but not whose. Version 2 adds `team_missing_tsa` / `opp_missing_tsa`: the usual shot attempts (FGA + 0.44 x FTA) of the rotation players who are out. Same rows, folds, tuned settings and 60/40 blend.
+
+| | version 1 | version 2 |
+|---|---|---|
+| CV MAE (5 date-safe folds) | 4.899 | 4.893 (better in 5 of 5 folds) |
+| 2025-26 test MAE | **4.857** (pre-committed) | 4.848 (second look) |
+| Luka's bump when a 35-min teammate sits | +0.8 whoever it is | +1.3 for Reaves (18 shots), +0.35 for a 6-shot role player |
+
+The 2025-26 test season was already used for version 1, and the questions behind version 2 looked at some 2025-26 games, so version 2's test number is a second look. Version 1's 4.86 stays the official result; the live 2026-27 tracker is the clean check for version 2. The site uses version 2.
 
 ## How it works
 
@@ -33,10 +45,10 @@ Next.js site (web/, Vercel)
 FastAPI backend (api/, Render, Docker)
         |
         v
-src/pregame.py    builds tonight's 33 features with the SAME code used for training (src/build_features.py)
+src/pregame.py    builds tonight's 35 features with the SAME code used for training (src/build_features.py)
         |
         v
-src/predict.py    models/deploy_model.joblib (0.6 HistGB + 0.4 Huber, trained 2018-19 to 2025-26)
+src/predict.py    models/deploy_model.joblib (version 2: 0.6 HistGB + 0.4 Huber, trained 2018-19 to 2025-26)
 ```
 
 - Data comes from [nba_api](https://github.com/swar/nba_api) (stats.nba.com game logs, 2017-18 to now).
@@ -52,7 +64,7 @@ data/processed/    features.csv (not in git, rebuild with src/build_features.py)
 data/site/         the small slice of data the API needs (~0.6 MB, in git)
 notebooks/         01_eda, 01b_attribute_combinations, 02_models (the class workflow)
 src/               data pull, features, checks, prediction code
-models/            final_model.joblib (test-set model), deploy_model.joblib (used by the site)
+models/            final_model.joblib (test-set model), deploy_model.joblib (used by the site); *_v1.joblib = version 1
 results/           CV and test tables, best hyperparameters
 figures/           charts from the notebooks
 api/               FastAPI backend + Dockerfile + tests

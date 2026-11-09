@@ -15,8 +15,9 @@ and training can't drift apart.
 
 Who's out tonight: tonight's fake box score lists every player whose latest
 team is his team or the opponent, minus the ones checked off as out. Then
-the training rule decides team_missing_min / opp_missing_min: rotation players
-(15+ min, played for the team in its last 10 games) who aren't in the box score.
+the training rule decides team_missing_min / opp_missing_min (and, version 2,
+team_missing_tsa / opp_missing_tsa): rotation players (15+ min, played for the
+team in its last 10 games) who aren't in the box score.
 That means a player traded away recently counts as missing automatically,
 exactly like in training.
 
@@ -106,7 +107,7 @@ def _tonight_tables(player_id, opp_team_id, game_date, home, team_out_ids, opp_o
 
     # player logs: him for 3 seasons (last season's matchup history needs his average
     # from 2 seasons back on last season's opening night), plus this season for everyone
-    # who played for either team (their usual minutes feed team/opp_missing_min)
+    # who played for either team (their usual minutes and shots feed team/opp_missing_*)
     this = players[players["SEASON"] == season]
     involved = this.loc[this["TEAM_ID"].isin([team_id, opp_team_id]), "PLAYER_ID"].unique()
     keep = ((players["PLAYER_ID"] == player_id) & players["SEASON"].isin(seasons_back(season, 2))) | \
@@ -152,7 +153,7 @@ def _tonight_tables(player_id, opp_team_id, game_date, home, team_out_ids, opp_o
 def pregame_features(player_id: int, opp_team_id: int, game_date, home: bool,
                      team_out_ids=(), opp_out_ids=(), players: pd.DataFrame | None = None,
                      teams: pd.DataFrame | None = None, team_id: int | None = None) -> pd.DataFrame:
-    """One-row DataFrame with exactly the FEATURES columns for a game on game_date.
+    """One-row DataFrame with exactly the FEATURES columns (35) for a game on game_date.
 
     team_out_ids / opp_out_ids: PLAYER_IDs sitting out tonight (his team / the opponent).
     players / teams: raw game logs to use (default: the site files in data/site/).
@@ -172,8 +173,9 @@ def tonight_rotations(player_id: int, opp_team_id: int, game_date, home: bool = 
                       team_id: int | None = None) -> pd.DataFrame:
     """Both teams' rotation players for tonight (the training definition), for the checklist.
 
-    Columns: TEAM_ID, PLAYER_ID, PLAYER_NAME, usual_min, on_team (0 = traded away since,
-    so he already counts as missing), last_game (date of his most recent game).
+    Columns: TEAM_ID, PLAYER_ID, PLAYER_NAME, usual_min, usual_tsa (usual shot attempts,
+    FGA + 0.44 * FTA), on_team (0 = traded away since, so he already counts as missing),
+    last_game (date of his most recent game).
     """
     if players is None or teams is None:
         players, teams = load_site_logs()
@@ -181,6 +183,7 @@ def tonight_rotations(player_id: int, opp_team_id: int, game_date, home: bool = 
                                     players, teams, team_id)
     rot = rotation_status(p, build_team_features(t))
     rot = rot[rot["GAME_ID"] == TONIGHT_GAME_ID].rename(columns={"avg_min_thru": "usual_min",
+                                                                 "avg_tsa_thru": "usual_tsa",
                                                                  "played": "on_team"})
     past = players[players["GAME_DATE"] < pd.Timestamp(game_date)]
     info = (past.sort_values("GAME_DATE").groupby("PLAYER_ID")
@@ -188,5 +191,6 @@ def tonight_rotations(player_id: int, opp_team_id: int, game_date, home: bool = 
     rot = rot.merge(info, left_on="PLAYER_ID", right_index=True, how="left")
     rot = rot[rot["PLAYER_ID"] != player_id]
     return (rot.sort_values(["TEAM_ID", "usual_min"], ascending=[True, False])
-               [["TEAM_ID", "PLAYER_ID", "PLAYER_NAME", "usual_min", "on_team", "last_game"]]
+               [["TEAM_ID", "PLAYER_ID", "PLAYER_NAME", "usual_min", "usual_tsa", "on_team",
+                 "last_game"]]
                .reset_index(drop=True))

@@ -144,11 +144,13 @@ export function MatchupPage() {
             pending={effective !== live}
             teamMissing={data?.key_numbers.team_missing_min ?? null}
             oppMissing={data?.key_numbers.opp_missing_min ?? null}
+            teamMissingTsa={data?.key_numbers.team_missing_tsa ?? null}
+            oppMissingTsa={data?.key_numbers.opp_missing_tsa ?? null}
             playerName={lastName(player.name)}
           />
         </section>
         <section aria-label="Opponent" className="order-6 lg:order-5 lg:col-span-5">
-          <OpponentCard data={data} />
+          <OpponentCard data={data} rotation={rotations?.teams.find((t) => t.side === "opponent")} oppOut={oppOut} />
         </section>
         <section aria-label="Recent form" className="order-5 lg:order-6 lg:col-span-7">
           <RecentForm games={history?.season_games} data={data} />

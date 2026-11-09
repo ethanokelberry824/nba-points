@@ -50,10 +50,15 @@ const FEATURE_GROUPS = [
     items: ["home or away", "days of rest, back to backs, games in the last 7 days", "games since returning from an absence, and how long it was", "starter minutes (28+ lately)"],
   },
   {
-    name: "Teammates",
-    count: 2,
-    example: "When a 36 minute teammate sits, those shots go somewhere. This is what the who's-out switches change.",
-    items: ["usual minutes of his teammates who are out", "usual minutes of opponents who are out"],
+    name: "Who's out",
+    count: 4,
+    example:
+      "When Austin Reaves (35 minutes, 18 shots a game) sits, those shots go somewhere. This is what the who's-out switches change.",
+    items: [
+      "usual minutes of his teammates who are out",
+      "usual shots of his teammates who are out (version 2)",
+      "the same two for the opponent's players who are out",
+    ],
   },
   {
     name: "Opponent",
@@ -71,10 +76,21 @@ const FEATURE_GROUPS = [
 
 const TRIED = [
   { name: "Simple rules (baselines)", what: "Last 5 games average, season average, blended average. Everything has to beat these.", mae: "5.237" },
-  { name: "Ridge regression", what: "A straight-line formula over all 33 inputs.", mae: "4.902" },
+  { name: "Ridge regression", what: "A straight-line formula over all the inputs.", mae: "4.902" },
   { name: "Huber regression", what: "Also a straight-line formula, but it isn't thrown off by rare 50 point nights.", mae: "4.866" },
   { name: "Gradient boosting", what: "Hundreds of small decision trees, each fixing the last one's mistakes.", mae: "4.862" },
-  { name: "Blend (the winner)", what: "60% gradient boosting + 40% Huber. Beat each of them alone in 5 of 5 validation folds.", mae: "4.857", win: true },
+  {
+    name: "Blend, version 1 (the winner)",
+    what: "60% gradient boosting + 40% Huber. Beat each of them alone in 5 of 5 validation folds. Scored once on the test season: the official number.",
+    mae: "4.857",
+    win: true,
+  },
+  {
+    name: "Blend, version 2 (the site's model)",
+    what: "Same blend, same settings, plus the usual shots of the players who are out. Beat version 1 in 5 of 5 validation folds. Its test number is a second look (see below).",
+    mae: "4.848",
+    note: "2nd look",
+  },
 ];
 
 const DIDNT_HELP = [
@@ -83,6 +99,8 @@ const DIDNT_HELP = [
   "Giving recent seasons more weight",
   "Predicting points above his average instead of points",
   "Other loss functions for the trees (squared error, Poisson)",
+  "Missing teammates' points, or just the single biggest shooter out (total missing shots did better)",
+  "Missing defenders on the other team: blocks, steals, defensive rebounds, plus-minus, and the team's defense with vs without him",
 ];
 
 function Section({ id, n, title, icon: Icon, children }: { id: string; n: number; title: string; icon: typeof Target; children: React.ReactNode }) {
@@ -148,7 +166,7 @@ export default function Page() {
             <div className="grid grid-cols-3 gap-2">
               <Stat value="8" label="seasons, 2018-19 to 2025-26" />
               <Stat value="~150k" label="player games" />
-              <Stat value="33" label="inputs per game" />
+              <Stat value="35" label="inputs per game" />
             </div>
             <p>
               Players need to average about 15+ minutes, and games under 5 minutes (injuries, ejections) are skipped. The
@@ -157,7 +175,7 @@ export default function Page() {
           </Section>
 
           <Section id="features" n={3} title="The features" icon={Layers}>
-            <p>Each game becomes 33 numbers the model can learn from, in five groups:</p>
+            <p>Each game becomes 35 numbers the model can learn from, in five groups:</p>
             <div className="grid gap-2 sm:grid-cols-2">
               {FEATURE_GROUPS.map((g) => (
                 <div key={g.name} className="rounded-lg border p-3">
@@ -189,7 +207,7 @@ export default function Page() {
             </p>
             <ul className="list-disc space-y-1 pl-5">
               <li>
-                <b>Leak test:</b> deleted every game after Jan 15, 2025, rebuilt everything, and checked that all 33 inputs
+                <b>Leak test:</b> deleted every game after Jan 15, 2025, rebuilt everything, and checked that all 35 inputs
                 for earlier games came out exactly the same. They did.
               </li>
               <li>
@@ -218,10 +236,28 @@ export default function Page() {
                     <div className={t.win ? "font-semibold text-brand-ink tabular-nums" : "font-semibold text-foreground tabular-nums"}>
                       {t.mae}
                     </div>
-                    <div className={t.win ? "text-[10px] text-foreground/80" : "text-[10px]"}>pts off</div>
+                    <div className={t.win ? "text-[10px] text-foreground/80" : "text-[10px]"}>{t.note ?? "pts off"}</div>
                   </div>
                 </div>
               ))}
+            </div>
+            <div className="space-y-2 rounded-lg border p-3">
+              <p className="font-medium text-foreground">Version 2: who&apos;s out, by shots and not just minutes</p>
+              <p>
+                Version 1 knew how many minutes were missing, but not whose. To it, Austin Reaves sitting out (35 minutes, 18
+                shots a game) looked the same as a role player who plays 35 minutes and takes 6 shots. Version 2 adds the
+                usual shots of the players who are out.
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                <Stat value="+0.8" label="Luka, any 35 minute teammate out (version 1)" />
+                <Stat value="+1.3" label="Luka, Reaves out (version 2)" />
+                <Stat value="+0.35" label="Luka, 6 shot role player out (version 2)" />
+              </div>
+              <p>
+                Average miss in cross-validation went from 4.899 to 4.893, and it won in all 5 validation folds. It&apos;s a
+                small average gain because most nights nobody important sits, but on the nights they do, the number moves
+                the way it should.
+              </p>
             </div>
             <p className="font-medium text-foreground">Tried and dropped (didn&apos;t beat the simpler version):</p>
             <ul className="list-disc space-y-1 pl-5">
@@ -242,7 +278,11 @@ export default function Page() {
               <Stat value="10%" label="off by 10 or more" />
             </div>
             <p>
-              That&apos;s about 7% better than the simple rule, and it held up live this season too.{" "}
+              That&apos;s about 7% better than the simple rule, and it held up live this season too. That score is version
+              1&apos;s. <b>Version 2</b>, the model the site uses now, scored <b>4.85</b> on the same season, but treat that
+              as a second look, not a clean test: the season had already been used once, and building version 2 involved
+              looking at some of its games. So 4.86 stays the official number, and this season&apos;s live games are the
+              clean check for version 2.{" "}
               <Link href="/model-performance" className="inline-flex items-center gap-0.5 font-medium text-brand-ink hover:underline">
                 See every chart on Model Performance <ArrowUpRight className="size-3.5" />
               </Link>
@@ -261,6 +301,13 @@ export default function Page() {
               <li>
                 <b>Minutes surprises.</b> Blowouts, foul trouble and coaching decisions change minutes in ways that are
                 only partly predictable.
+              </li>
+              <li>
+                <b>Missing defenders.</b> When Victor Wembanyama sat in 2025-26, Spurs opponents scored 117.5 points a game,
+                vs 109.8 with him. The model can&apos;t see that. Five &quot;missing defender&quot; inputs were tried
+                (blocks, steals, defensive rebounds, plus-minus, the team&apos;s defense with vs without him) and none
+                improved accuracy: box scores don&apos;t capture defense well. The Matchup page shows the with/without
+                number as context only.
               </li>
               <li>
                 <b>Big nights.</b> It predicts a typical night (between about 2 and 35 points), so it will miss the 50

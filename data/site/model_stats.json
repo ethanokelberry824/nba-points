@@ -1,71 +1,118 @@
 {
- "built_at": "2026-11-08 22:07",
+ "built_at": "2026-11-09 11:09",
  "test_season": "2025-26",
  "test_games": 19832,
  "final_model": "blend: 0.6 * HistGB + 0.4 * Huber, clipped at 0",
  "test_results": [
   {
+   "approach": "v2 Blend (0.6 HistGB + 0.4 Huber)",
+   "version": "v2",
+   "test_mae": 4.848,
+   "test_rmse": 6.264,
+   "test_r2": 0.469,
+   "cv_mae": 4.893,
+   "is_baseline": false,
+   "is_final": false,
+   "is_v2_final": true
+  },
+  {
+   "approach": "v2 HistGB (tuned)",
+   "version": "v2",
+   "test_mae": 4.853,
+   "test_rmse": 6.274,
+   "test_r2": 0.467,
+   "cv_mae": 4.899,
+   "is_baseline": false,
+   "is_final": false,
+   "is_v2_final": false
+  },
+  {
    "approach": "Blend (0.6 HistGB + 0.4 Huber)",
+   "version": "v1",
    "test_mae": 4.857,
    "test_rmse": 6.278,
    "test_r2": 0.466,
    "cv_mae": 4.899,
    "is_baseline": false,
-   "is_final": true
+   "is_final": true,
+   "is_v2_final": false
+  },
+  {
+   "approach": "v2 Huber (tuned)",
+   "version": "v2",
+   "test_mae": 4.858,
+   "test_rmse": 6.271,
+   "test_r2": 0.467,
+   "cv_mae": 4.902,
+   "is_baseline": false,
+   "is_final": false,
+   "is_v2_final": false
   },
   {
    "approach": "HistGB (tuned)",
+   "version": "v1",
    "test_mae": 4.862,
    "test_rmse": 6.285,
    "test_r2": 0.465,
    "cv_mae": 4.903,
    "is_baseline": false,
-   "is_final": false
+   "is_final": false,
+   "is_v2_final": false
   },
   {
    "approach": "Huber (tuned)",
+   "version": "v1",
    "test_mae": 4.866,
    "test_rmse": 6.287,
    "test_r2": 0.465,
    "cv_mae": 4.909,
    "is_baseline": false,
-   "is_final": false
+   "is_final": false,
+   "is_v2_final": false
   },
   {
    "approach": "Ridge (tuned)",
+   "version": "v1",
    "test_mae": 4.902,
    "test_rmse": 6.283,
    "test_r2": 0.465,
    "cv_mae": 4.937,
    "is_baseline": false,
-   "is_final": false
+   "is_final": false,
+   "is_v2_final": false
   },
   {
    "approach": "baseline: pts_blend",
+   "version": "baseline",
    "test_mae": 5.051,
    "test_rmse": 6.538,
    "test_r2": 0.421,
    "cv_mae": 5.08,
    "is_baseline": true,
-   "is_final": false
+   "is_final": false,
+   "is_v2_final": false
   },
   {
    "approach": "baseline: pts_season",
+   "version": "baseline",
    "test_mae": 5.061,
    "test_rmse": 6.56,
    "test_r2": 0.417,
    "cv_mae": 5.092,
    "is_baseline": true,
-   "is_final": false
+   "is_final": false,
+   "is_v2_final": false
   },
   {
    "approach": "baseline: pts_l5",
+   "version": "baseline",
    "test_mae": 5.237,
    "test_rmse": 6.762,
    "test_r2": 0.381,
    "cv_mae": 5.275,
    "is_baseline": true,
-   "is_final": false
+   "is_final": false,
+   "is_v2_final": false
   }
  ],
  "accuracy": {
@@ -16395,12 +16442,13 @@
  },
  "live": {
   "season": "2026-27",
-  "model": "deploy model (trained 2018-19 to 2025-26, never saw this season)",
+  "model": "deploy model, version 2 (trained 2018-19 to 2025-26, never saw this season)",
   "stats_through": "2026-11-08",
   "games": 2383,
-  "mae_model": 4.855,
+  "mae_model": 4.853,
+  "mae_model_v1": 4.855,
   "mae_baseline_l5": 5.342,
-  "pct_within_5": 60.6,
+  "pct_within_5": 60.4,
   "weeks": [
    {
     "week": 1,
@@ -16408,7 +16456,8 @@
     "first_game": "2026-10-20",
     "last_game": "2026-10-25",
     "games": 721,
-    "mae_model": 4.943,
+    "mae_model": 4.96,
+    "mae_model_v1": 4.943,
     "mae_baseline_l5": 5.823
    },
    {
@@ -16417,7 +16466,8 @@
     "first_game": "2026-10-26",
     "last_game": "2026-11-01",
     "games": 778,
-    "mae_model": 4.973,
+    "mae_model": 4.957,
+    "mae_model_v1": 4.973,
     "mae_baseline_l5": 5.357
    },
    {
@@ -16426,8 +16476,88 @@
     "first_game": "2026-11-02",
     "last_game": "2026-11-08",
     "games": 884,
-    "mae_model": 4.679,
+    "mae_model": 4.673,
+    "mae_model_v1": 4.679,
     "mae_baseline_l5": 4.936
+   }
+  ]
+ },
+ "version_2": {
+  "change": "Adds the usual shot attempts (TSA = FGA + 0.44 x FTA) of rotation players who are out tonight, for his team and the opponent, next to their usual minutes.",
+  "new_features": [
+   "team_missing_tsa",
+   "opp_missing_tsa"
+  ],
+  "cv": {
+   "mae_v1": 4.899,
+   "mae_v2": 4.8926,
+   "folds_won": 5,
+   "folds": 5,
+   "rmse_v1": 6.3292,
+   "rmse_v2": 6.321
+  },
+  "test": {
+   "mae_v1": 4.857,
+   "mae_v2": 4.848,
+   "note": "Version 1's 2025-26 score is the pre-committed result. Version 2 was built after that, and the questions behind it looked at some 2025-26 games, so its 2025-26 score is a second look. The live 2026-27 season is the clean check for version 2."
+  },
+  "live": {
+   "mae_v1": 4.855,
+   "mae_v2": 4.853,
+   "mae_baseline_l5": 5.342,
+   "games": 2383
+  },
+  "reaves": {
+   "example": "Luka Doncic, 2026-11-06 vs POR",
+   "everyone_playing": {
+    "v1": 32.71,
+    "v2": 32.59
+   },
+   "scenarios": [
+    {
+     "label": "Reaves out (35 min, 18 shots)",
+     "teammate_min": 34.6,
+     "teammate_tsa": 18.1,
+     "bump_v1": 0.8,
+     "bump_v2": 1.3
+    },
+    {
+     "label": "35-min role player out (6 shots)",
+     "teammate_min": 34.6,
+     "teammate_tsa": 6.0,
+     "bump_v1": 0.8,
+     "bump_v2": 0.35
+    }
+   ]
+  },
+  "by_shots_out": [
+   {
+    "group": "nobody out",
+    "games": 3040,
+    "mae_v1": 4.826,
+    "mae_v2": 4.826,
+    "v2_better_by": -0.001
+   },
+   {
+    "group": "under 15 shots",
+    "games": 4978,
+    "mae_v1": 4.761,
+    "mae_v2": 4.746,
+    "v2_better_by": 0.015
+   },
+   {
+    "group": "15-30 shots",
+    "games": 6282,
+    "mae_v1": 4.861,
+    "mae_v2": 4.845,
+    "v2_better_by": 0.016
+   },
+   {
+    "group": "30+ shots",
+    "games": 5532,
+    "mae_v1": 4.955,
+    "mae_v2": 4.956,
+    "v2_better_by": -0.001
    }
   ]
  }

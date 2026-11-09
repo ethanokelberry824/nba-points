@@ -6,17 +6,22 @@ Step 5: numbers for the site's model performance page -> data/site/model_stats.j
 Everything here is a REPORT on models that are already final. Nothing feeds back
 into model choices.
 
-    test_results        every model + baseline on the 2025-26 test set (results/test_results.csv)
+    test_results        every model + baseline on the 2025-26 test set (results/test_results.csv),
+                        version 1 (the pre-committed score) and version 2 (a second look)
     by_month / by_tier / by_role
-                        final model vs the last-5 baseline on the same test games
+                        version 1 final model vs the last-5 baseline on the same test games
                         (same groups as the notebook's error breakdown, figures 11-13)
     sample              ~2,000 random test games: predicted vs actual (scatter plot)
     floor               baseline vs model vs "cheating" model that knows actual minutes
                         (Jan-Apr 2025, from notebooks/02_models.ipynb, "How low can MAE go?")
-    feature_importance  permutation importance of the final model on the test set
+    feature_importance  permutation importance of the version 1 final model on the test set
                         (cached in results/test_permutation_importance.csv, ~1 min to compute)
-    live                the DEPLOY model on 2026-27 games played so far, by week. Fair:
-                        the deploy model was trained through 2025-26 and never saw these.
+    live                the DEPLOY model (version 2) on 2026-27 games played so far, by week,
+                        with version 1's deploy model next to it. Fair: both were trained
+                        through 2025-26 and never saw these. The clean check for version 2.
+    version_2           what changed in version 2 (missing teammates' shot volume): CV per
+                        model, both test scores, the Reaves example, test error by how many
+                        teammate shots were missing (all written by notebooks/02_models.ipynb)
 """
 
 import json
@@ -84,6 +89,8 @@ FEATURE_LABELS = {
     "starter_proxy": "Starter-level minutes (28+ over last 5)",
     "team_missing_min": "Teammates out (usual minutes)",
     "opp_missing_min": "Opponents out (usual minutes)",
+    "team_missing_tsa": "Teammates out (usual shots)",
+    "opp_missing_tsa": "Opponents out (usual shots)",
     "opp_def_rtg": "Opponent defensive rating",
     "opp_pace": "Opponent pace",
     "opp_pts_allowed": "Opponent points allowed per game",
@@ -124,13 +131,15 @@ def importance(final_model, test: pd.DataFrame) -> pd.DataFrame:
     return imp
 
 
-def live_tracker(deploy, feats: pd.DataFrame) -> dict:
-    """Deploy model on this season's games so far, MAE by week (weeks start Monday)."""
+def live_tracker(deploy, deploy_v1, feats: pd.DataFrame) -> dict:
+    """Deploy model (version 2) on this season's games so far, MAE by week (weeks start
+    Monday), with version 1's deploy model on the same games for comparison."""
     live = feats[feats["SEASON"] == CURRENT].copy()
     if live.empty:
         return {"season": CURRENT, "games": 0, "weeks": []}
     live["pred"] = deploy["model"].predict(live[deploy["features"]])
     live["err_model"] = (live["PTS"] - live["pred"]).abs()
+    live["err_v1"] = (live["PTS"] - deploy_v1["model"].predict(live[deploy_v1["features"]])).abs()
     live["err_l5"] = (live["PTS"] - live["pts_l5"]).abs()
     live["week_start"] = live["GAME_DATE"] - pd.to_timedelta(live["GAME_DATE"].dt.day_of_week, unit="D")
     weeks = []
@@ -139,29 +148,72 @@ def live_tracker(deploy, feats: pd.DataFrame) -> dict:
                       "first_game": g["GAME_DATE"].min().strftime("%Y-%m-%d"),
                       "last_game": g["GAME_DATE"].max().strftime("%Y-%m-%d"),
                       "games": int(len(g)), "mae_model": r(g["err_model"].mean()),
+                      "mae_model_v1": r(g["err_v1"].mean()),
                       "mae_baseline_l5": r(g["err_l5"].mean())})
     return {
         "season": CURRENT,
-        "model": "deploy model (trained 2018-19 to 2025-26, never saw this season)",
+        "model": "deploy model, version 2 (trained 2018-19 to 2025-26, never saw this season)",
         "stats_through": live["GAME_DATE"].max().strftime("%Y-%m-%d"),
         "games": int(len(live)),
         "mae_model": r(live["err_model"].mean()),
+        "mae_model_v1": r(live["err_v1"].mean()),
         "mae_baseline_l5": r(live["err_l5"].mean()),
         "pct_within_5": r(100 * (live["err_model"] <= 5).mean(), 1),
         "weeks": weeks,
     }
 
 
+V1_BLEND = "Blend (0.6 HistGB + 0.4 Huber)"
+V2_BLEND = "v2 Blend (0.6 HistGB + 0.4 Huber)"
+
+
+def version_2(res: pd.DataFrame, live: dict) -> dict:
+    """Version 2 summary for the Model Performance page, from the notebook's result files."""
+    cv = pd.read_csv(ROOT / "results" / "cv_results_v2.csv").set_index("model")
+    reaves = pd.read_csv(ROOT / "results" / "v2_reaves_example.csv").set_index("scenario")
+    shots = pd.read_csv(ROOT / "results" / "v2_test_by_shots_out.csv")
+    t = res.set_index("approach")
+    b = cv.loc[V1_BLEND]
+    return {
+        "change": "Adds the usual shot attempts (TSA = FGA + 0.44 x FTA) of rotation players "
+                  "who are out tonight, for his team and the opponent, next to their usual minutes.",
+        "new_features": ["team_missing_tsa", "opp_missing_tsa"],
+        "cv": {"mae_v1": r(b["v1 CV MAE"], 4), "mae_v2": r(b["v2 CV MAE"], 4),
+               "folds_won": int(b["v2 folds won"]), "folds": 5,
+               "rmse_v1": r(b["v1 RMSE"], 4), "rmse_v2": r(b["v2 RMSE"], 4)},
+        "test": {"mae_v1": r(t.loc[V1_BLEND, "test_MAE"]), "mae_v2": r(t.loc[V2_BLEND, "test_MAE"]),
+                 "note": f"Version 1's {TEST_SEASON} score is the pre-committed result. Version 2 "
+                         f"was built after that, and the questions behind it looked at some "
+                         f"{TEST_SEASON} games, so its {TEST_SEASON} score is a second look. The "
+                         f"live {CURRENT} season is the clean check for version 2."},
+        "live": {"mae_v1": live.get("mae_model_v1"), "mae_v2": live.get("mae_model"),
+                 "mae_baseline_l5": live.get("mae_baseline_l5"), "games": live.get("games")},
+        "reaves": {
+            "example": reaves["example"].iloc[0],
+            "everyone_playing": {"v1": r(reaves["version 1"].iloc[0], 2), "v2": r(reaves["version 2"].iloc[0], 2)},
+            "scenarios": [{"label": label, "teammate_min": r(x["teammate_min"], 1),
+                           "teammate_tsa": r(x["teammate_tsa"], 1),
+                           "bump_v1": r(x["bump, version 1"], 2), "bump_v2": r(x["bump, version 2"], 2)}
+                          for label, x in reaves.iloc[1:].iterrows()],
+        },
+        "by_shots_out": [{"group": x["shots out"], "games": int(x["games"]), "mae_v1": r(x["MAE_v1"]),
+                          "mae_v2": r(x["MAE_v2"]), "v2_better_by": r(x["v2 better by"])}
+                         for _, x in shots.iterrows()],
+    }
+
+
 def main() -> None:
     feats = pd.read_csv(ROOT / "data" / "processed" / "features.csv", parse_dates=["GAME_DATE"])
-    final = joblib.load(ROOT / "models" / "final_model.joblib")
+    # the test-set report is about version 1, the model that was scored before anyone looked
+    final = joblib.load(ROOT / "models" / "final_model_v1.joblib")
     deploy = joblib.load(ROOT / "models" / "deploy_model.joblib")
+    deploy_v1 = joblib.load(ROOT / "models" / "deploy_model_v1.joblib")
 
-    # ---- test set report (final model, trained through 2024-25)
+    # ---- test set report (version 1 final model, trained through 2024-25)
     test = feats[feats["SEASON"] == TEST_SEASON].copy()
     test["pred"] = final["model"].predict(test[final["features"]])
     res = pd.read_csv(ROOT / "results" / "test_results.csv")
-    blend_mae = res.loc[res["approach"].str.startswith("Blend"), "test_MAE"].iloc[0]
+    blend_mae = res.loc[res["approach"] == V1_BLEND, "test_MAE"].iloc[0]
     if not np.isclose((test["PTS"] - test["pred"]).abs().mean(), blend_mae):
         raise RuntimeError("final model no longer reproduces the test MAE in results/test_results.csv")
 
@@ -176,11 +228,12 @@ def main() -> None:
     })
     months = ["Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Apr"]
 
-    test_results = [{"approach": x["approach"], "test_mae": r(x["test_MAE"]),
+    test_results = [{"approach": x["approach"], "version": x["version"], "test_mae": r(x["test_MAE"]),
                      "test_rmse": r(x["test_RMSE"]), "test_r2": r(x["test_R2"]),
                      "cv_mae": r(x["CV_MAE"]),
                      "is_baseline": x["approach"].startswith("baseline"),
-                     "is_final": x["approach"].startswith("Blend")}
+                     "is_final": x["approach"] == V1_BLEND,         # pre-committed
+                     "is_v2_final": x["approach"] == V2_BLEND}      # second look
                     for _, x in res.iterrows()]
 
     smp = test.sample(min(SAMPLE_N, len(test)), random_state=SEED).sort_values("GAME_DATE")
@@ -219,8 +272,9 @@ def main() -> None:
                       "that overlap share credit, so near 0 means nothing new beyond the others.",
             "features": top,
         },
-        "live": live_tracker(deploy, feats),
+        "live": live_tracker(deploy, deploy_v1, feats),
     }
+    stats["version_2"] = version_2(res, stats["live"])
     out = SITE_DIR / "model_stats.json"
     out.write_text(json.dumps(stats, indent=1, ensure_ascii=False) + "\n")
 
@@ -228,8 +282,11 @@ def main() -> None:
     print(f"  test MAE {stats['accuracy']['mae']} vs baseline {stats['accuracy']['mae_baseline_l5']}")
     print("  top features:", ", ".join(f"{t['feature']} {t['mae_increase']}" for t in top[:5]))
     lv = stats["live"]
-    print(f"  live {lv['season']}: {lv['games']} games, MAE {lv.get('mae_model')} "
-          f"vs baseline {lv.get('mae_baseline_l5')}, {len(lv['weeks'])} weeks")
+    print(f"  live {lv['season']}: {lv['games']} games, MAE {lv.get('mae_model')} (v2) / "
+          f"{lv.get('mae_model_v1')} (v1) vs baseline {lv.get('mae_baseline_l5')}, {len(lv['weeks'])} weeks")
+    v2 = stats["version_2"]
+    print(f"  version 2: CV {v2['cv']['mae_v1']} -> {v2['cv']['mae_v2']} ({v2['cv']['folds_won']}/5 folds), "
+          f"test {v2['test']['mae_v1']} -> {v2['test']['mae_v2']} (second look)")
 
 
 if __name__ == "__main__":

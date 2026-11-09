@@ -52,14 +52,15 @@ BREAKDOWN_GROUPS = [
     ("opponent", "Opponent", ["opp_def_rtg", "opp_pace", "opp_pts_allowed",
                               "net_rtg_gap", "abs_net_rtg_gap"]),
     ("schedule", "Schedule and rest", ["rest_days", "back_to_back", "games_last_7"]),
-    ("players_out", "Players out", ["team_missing_min", "opp_missing_min"]),
+    ("players_out", "Players out", ["team_missing_min", "opp_missing_min",
+                                    "team_missing_tsa", "opp_missing_tsa"]),
     ("home", "Home / away", ["HOME"]),
     ("form", "Recent form", ["pts_l3", "pts_l5", "pts_l10", "min_l3", "min_l5", "min_l10",
                              "min_trend", "tsa_l5", "ts_hot", "starter_proxy"]),
     ("matchup", "History vs this opponent", ["pts_vs_opp_rel"]),
 ]
 OPP_COLS = ["opp_def_rtg", "opp_pace", "opp_pts_allowed", "net_rtg_gap", "abs_net_rtg_gap",
-            "opp_missing_min", "pts_vs_opp_rel"]   # the only features that change with the opponent
+            "opp_missing_min", "opp_missing_tsa", "pts_vs_opp_rel"]   # the only features that change with the opponent
 
 
 class Engine:
@@ -71,6 +72,10 @@ class Engine:
         self.bands = json.loads((site_dir / "error_bands.json").read_text())
         stats_path = site_dir / "model_stats.json"
         self.model_stats = json.loads(stats_path.read_text()) if stats_path.exists() else None
+        # defense with / without each player this season (context only, NOT a model feature)
+        onoff_path = site_dir / "def_onoff.csv"
+        self.onoff = (pd.read_csv(onoff_path).set_index(["TEAM_ID", "PLAYER_ID"])
+                      if onoff_path.exists() else None)
         self.bundle = load_bundle()
 
         self.season = self.meta["season"]
@@ -153,9 +158,9 @@ class Engine:
           - build_team_features -> each team's blended def rating, pace, points allowed,
             net rating going into that night (only uses that team's earlier games, so
             who it's paired with doesn't matter)
-          - missing_rotation_minutes -> each team's missing minutes with nobody checked
-            off (rotation players traded away recently), the training rule
-        Index TEAM_ID; columns def_rtg, pace, pts_allowed, net_rtg, missing_min, ranks.
+          - missing_rotation_minutes -> each team's missing minutes and shots with nobody
+            checked off (rotation players traded away recently), the training rule
+        Index TEAM_ID; columns def_rtg, pace, pts_allowed, net_rtg, missing_min, missing_tsa, ranks.
         """
         d = pd.Timestamp(day)
         teams = self.teams[(self.teams["GAME_DATE"] < d)
@@ -180,13 +185,14 @@ class Engine:
         box = roster.assign(SEASON=self.season, GAME_ID=roster["TEAM_ID"].map(tonight["GAME_ID"]),
                             GAME_DATE=d, MIN=0, FGA=0, FTA=0, PTS=0)
         miss = missing_rotation_minutes(pd.concat([p, box], ignore_index=True), tf)
-        miss = miss[miss["GAME_ID"] <= SLATE_GAME_ID0].set_index("TEAM_ID")["missing_min"]
+        miss = miss[miss["GAME_ID"] <= SLATE_GAME_ID0].set_index("TEAM_ID")
 
         out = pd.DataFrame({
             "def_rtg": tonight["def_rtg_blend"], "pace": tonight["pace_blend"],
             "pts_allowed": tonight["pts_allowed_blend"], "net_rtg": tonight["net_rtg_blend"],
         })
-        out["missing_min"] = miss.reindex(out.index).fillna(0.0)
+        out["missing_min"] = miss["missing_min"].reindex(out.index).fillna(0.0)
+        out["missing_tsa"] = miss["missing_tsa"].reindex(out.index).fillna(0.0)
         out["def_rank"] = out["def_rtg"].rank(method="min").astype(int)            # 1 = toughest
         out["pace_rank"] = out["pace"].rank(method="min", ascending=False).astype(int)  # 1 = fastest
         return out.sort_index()
@@ -239,6 +245,7 @@ class Engine:
             "abs_net_rtg_gap": abs(gap),
             "rest_days": rest, "back_to_back": float(rest == 0), "games_last_7": g7,
             "team_missing_min": 0.0, "opp_missing_min": 0.0,
+            "team_missing_tsa": 0.0, "opp_missing_tsa": 0.0,
             "HOME": [0, 1],
             "pts_l3": x["pts_blend"], "pts_l5": x["pts_blend"], "pts_l10": x["pts_blend"],
             "min_l3": x["min_blend"], "min_l5": x["min_blend"], "min_l10": x["min_blend"],
@@ -345,6 +352,8 @@ class Engine:
                 "opp_pace_rank": int(slate.at[opp_id, "pace_rank"]),
                 "team_missing_min": num(x["team_missing_min"], 1),
                 "opp_missing_min": num(x["opp_missing_min"], 1),
+                "team_missing_tsa": num(x["team_missing_tsa"], 1),
+                "opp_missing_tsa": num(x["opp_missing_tsa"], 1),
                 "rest_days": int(x["rest_days"]),
             },
             "low_minutes_warning": bool(x["min_blend"] < 15),
@@ -358,11 +367,11 @@ class Engine:
     def _sweep(self, player_id: int, date: str | None, home: bool) -> tuple[dict, pd.DataFrame]:
         """His prediction against every other team (nobody checked off), sorted high to low.
 
-        Fast path, without new feature math: only 7 features depend on the opponent
+        Fast path, without new feature math: only 8 features depend on the opponent
         (OPP_COLS). Everything else (his form, rest, his team's missing minutes) is
         the same whoever he plays. So: one normal pregame pass vs the first opponent,
         then the opponent columns for all teams from the training functions in one go:
-          - opponent strength + missing minutes: the "every team plays tonight" slate
+          - opponent strength + missing minutes / shots: the "every team plays tonight" slate
           - pts_vs_opp_rel: add_matchup_history on his past games plus one tonight
             row per opponent (each row is alone in its opponent group, so they don't
             see each other)
@@ -389,6 +398,7 @@ class Engine:
         X["net_rtg_gap"] = row["team_net_rtg"].iloc[0] - o["net_rtg"].to_numpy()
         X["abs_net_rtg_gap"] = X["net_rtg_gap"].abs()
         X["opp_missing_min"] = o["missing_min"].to_numpy()
+        X["opp_missing_tsa"] = o["missing_tsa"].to_numpy()
         X["pts_vs_opp_rel"] = rel
         preds = predict_points(X)
 
@@ -403,6 +413,7 @@ class Engine:
                 "opp_def_rtg": num(o.at[opp, "def_rtg"], 1), "opp_def_rank": int(o.at[opp, "def_rank"]),
                 "opp_pace": num(o.at[opp, "pace"], 1), "opp_pace_rank": int(o.at[opp, "pace_rank"]),
                 "opp_missing_min": num(o.at[opp, "missing_min"], 1),
+                "opp_missing_tsa": num(o.at[opp, "missing_tsa"], 1),
                 "pts_vs_opp_rel": num(rel[i], 2), "meetings": int(meetings.get(opp, 0)),
             })
         results.sort(key=lambda r: r["prediction"], reverse=True)
@@ -425,21 +436,41 @@ class Engine:
         out = []
         for side, tid in [("team", team_id), ("opponent", opp_id)]:
             r = rot[rot["TEAM_ID"] == tid]
-            out.append({
-                "side": side, "team_id": tid, "abbr": self.abbr[tid], "name": self.name[tid],
-                "players": [{
+            players = []
+            for _, p in r.iterrows():
+                item = {
                     "player_id": int(p["PLAYER_ID"]), "name": p["PLAYER_NAME"],
                     "usual_min": num(p["usual_min"], 1),
+                    "usual_tsa": num(p["usual_tsa"], 1),
                     "still_on_team": bool(p["on_team"]),
                     "last_game": p["last_game"].strftime("%Y-%m-%d"),
                     "missed_last_team_game": bool(p["last_game"] < last_team_game.get(tid, p["last_game"])),
-                } for _, p in r.iterrows()],
-            })
+                }
+                if side == "opponent":
+                    item.update(self.defense_context(tid, int(p["PLAYER_ID"])))
+                players.append(item)
+            out.append({"side": side, "team_id": tid, "abbr": self.abbr[tid],
+                        "name": self.name[tid], "players": players})
         return {"date": d.strftime("%Y-%m-%d"), "home": bool(home),
                 "note": "Rotation = 15+ min a game and played for the team in its last 10 games. "
+                        "usual_min / usual_tsa = his season averages of minutes and shot attempts "
+                        "(FGA + 0.44 x FTA); both feed the model when he's out. "
                         "Players with still_on_team = false were traded away and already count "
-                        "as out; don't show a toggle for them.",
+                        "as out; don't show a toggle for them. "
+                        "Opponent players also get def_delta = the opponent's defensive rating "
+                        "without him minus with him this season (points allowed per 100 "
+                        "possessions, + = worse without him) and games_without. CONTEXT ONLY: "
+                        "the model doesn't use it; show it only when games_without >= 5.",
                 "teams": out}
+
+    def defense_context(self, team_id: int, player_id: int) -> dict:
+        """His team's defense with vs without him this season (data/site/def_onoff.csv)."""
+        key = (team_id, player_id)
+        if self.onoff is None or key not in self.onoff.index:
+            return {"def_delta": None, "games_without": 0, "games_with": 0}
+        x = self.onoff.loc[key]
+        return {"def_delta": num(x["def_delta"], 1), "games_without": int(x["games_without"]),
+                "games_with": int(x["games_with"])}
 
     def history(self, player_id: int) -> dict:
         self.check_player(player_id)

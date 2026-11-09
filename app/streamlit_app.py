@@ -112,7 +112,7 @@ team_games = teams[teams["GAME_DATE"] < pd.Timestamp(game_date)]
 last_team_game = team_games.groupby("TEAM_ID")["GAME_DATE"].max()
 
 st.markdown("**Who's out tonight?** Everyone plays unless you check them off. "
-            "Lists each team's rotation (15+ minutes a game) with usual minutes.")
+            "Lists each team's rotation (15+ minutes a game) with usual minutes and shots.")
 out_ids, out_names = {}, []
 for col, tid in zip(st.columns(2), [team_id, opp_id]):
     r = rot[rot["TEAM_ID"] == tid]
@@ -120,7 +120,7 @@ for col, tid in zip(st.columns(2), [team_id, opp_id]):
     box = col.expander(team_name[tid])
     picked = []
     for _, p in on.iterrows():
-        label = f"{p['PLAYER_NAME']} ({p['usual_min']:.0f} min"
+        label = f"{p['PLAYER_NAME']} ({p['usual_min']:.0f} min, {p['usual_tsa']:.0f} shots"
         if p["last_game"] < last_team_game.get(tid, p["last_game"]):
             label += f", last played {p['last_game']:%b %-d}"
         if box.checkbox(label + ")", key=f"out_{tid}_{p['PLAYER_ID']}"):
@@ -195,19 +195,23 @@ with st.expander("How it works"):
     st.markdown(f"""
 - **Data:** every regular season NBA game since 2018-19 (8 seasons, about 150,000 player games),
   pulled from stats.nba.com.
-- **Features:** 33 numbers about the game, all built only from games before it: his recent and
+- **Features:** 35 numbers about the game, all built only from games before it: his recent and
   season scoring and minutes (blended with last season early on), shooting volume and efficiency,
-  rest and back to backs, which rotation players are out on each team, the opponent's defense
-  and pace, and how he has played against this team before.
+  rest and back to backs, which rotation players are out on each team (their usual minutes and,
+  since version 2, their usual shots), the opponent's defense and pace, and how he has played
+  against this team before.
 - **Model:** a blend of two models, 60% gradient boosting (lots of small decision trees) and
   40% Huber regression (a linear model that isn't thrown off by rare 50 point nights).
 - **How good is it:** tested on the whole {meta['test_season']} season, which the model never saw
   while being built, it was off by **{mae:.2f} points** per game on average. Just using his
   "last 5 games average" was off by {meta['baseline_l5_mae']:.2f}. {meta['pct_within_3']}% of
   predictions landed within 3 points, {meta['pct_within_5']}% within 5, and
-  {meta['pct_off_10_plus']}% were off by 10 or more.
-- **What it can't know:** injury news, foul trouble, blowouts, and coaching decisions. It predicts
-  a typical night, so it will miss the 40 point explosions.
+  {meta['pct_off_10_plus']}% were off by 10 or more. (That's version 1's pre-committed score. The
+  current version 2 scored {meta.get('v2', {}).get('test_mae', mae):.2f} on the same season, but that's a
+  second look, since the season had already been used.)
+- **What it can't know:** injury news, foul trouble, blowouts, coaching decisions, and missing
+  defenders (box scores can't measure defense well). It predicts a typical night, so it will miss
+  the 40 point explosions.
 """)
 
 st.markdown(f"<p class='small-note'>Stats through {stats_through:%B %-d, %Y}. "

@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, FlaskConical, GraduationCap, Info } from "lucide-react";
+import { Activity, FlaskConical, GraduationCap, Info, Users } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -22,16 +22,18 @@ import { AXIS, ChartTooltipBox, TooltipRow } from "@/components/charts";
 import { ApiErrorCard, PageHeader, Takeaway } from "@/components/page-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { GroupRow, Meta, ModelStats } from "@/lib/api";
-import { fmt, longDate, shortDate } from "@/lib/format";
+import type { GroupRow, Meta, ModelStats, Version2 } from "@/lib/api";
+import { fmt, longDate, shortDate, signed } from "@/lib/format";
 import { useMeta, useModelStats } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 
 const MODEL = "var(--color-brand)";
 const BASE = "var(--color-muted-foreground)";
+const V2 = "var(--color-pred)";
 
 const APPROACH_LABEL: Record<string, string> = {
-  "Blend (0.6 HistGB + 0.4 Huber)": "Final blend",
+  "v2 Blend (0.6 HistGB + 0.4 Huber)": "Version 2 blend",
+  "Blend (0.6 HistGB + 0.4 Huber)": "Final blend (v1)",
   "HistGB (tuned)": "Gradient boosting",
   "Huber (tuned)": "Huber regression",
   "Ridge (tuned)": "Ridge regression",
@@ -79,11 +81,19 @@ function ChartCard({ title, description, children, takeaway, className }: { titl
 function KpiRow({ s }: { s: ModelStats }) {
   const a = s.accuracy;
   const items = [
-    { label: `Test error, ${s.test_season}`, value: fmt(a.mae, 2), unit: "pts", sub: `average miss over ${n0(s.test_games)} games`, accent: true },
+    {
+      label: `Test error, ${s.test_season}`,
+      value: fmt(a.mae, 2),
+      unit: "pts",
+      sub: s.version_2
+        ? `version 1, pre-committed (${n0(s.test_games)} games). Version 2: ${fmt(s.version_2.test.mae_v2, 2)}, a second look`
+        : `average miss over ${n0(s.test_games)} games`,
+      accent: true,
+    },
     { label: "Last 5 games rule", value: fmt(a.mae_baseline_l5, 2), unit: "pts", sub: "the simple baseline to beat" },
     { label: "Within 5 points", value: fmt(a.pct_within_5, 0), unit: "%", sub: `${fmt(a.pct_within_3, 0)}% within 3, ${fmt(a.pct_off_10_plus, 0)}% off by 10+` },
     {
-      label: `Live, ${s.live.season}`,
+      label: `Live, ${s.live.season}${s.version_2 ? " (version 2)" : ""}`,
       value: fmt(s.live.mae_model, 2),
       unit: "pts",
       sub: `vs ${fmt(s.live.mae_baseline_l5, 2)} baseline, ${n0(s.live.games)} games`,
@@ -109,11 +119,12 @@ function KpiRow({ s }: { s: ModelStats }) {
 
 function TestResults({ s }: { s: ModelStats }) {
   const rows = s.test_results
-    .slice()
+    .filter((r) => r.version !== "v2" || r.is_v2_final)
     .sort((a, b) => a.test_mae - b.test_mae)
     .map((r, i) => ({ ...r, i, name: APPROACH_LABEL[r.approach] ?? r.approach }));
   const final = rows.find((r) => r.is_final)!;
   const l5 = rows.find((r) => r.approach === "baseline: pts_l5")!;
+  const v2 = rows.find((r) => r.is_v2_final);
   const d0 = 4.5;
   return (
     <ChartCard
@@ -124,12 +135,15 @@ function TestResults({ s }: { s: ModelStats }) {
           Every model beats every simple rule. The final blend misses by {fmt(l5.test_mae - final.test_mae, 2)} points less
           than the last 5 games rule ({fmt(((l5.test_mae - final.test_mae) / l5.test_mae) * 100, 0)}% better). The models are
           close to each other, so most of the gain comes from the features, not the algorithm.
+          {v2 &&
+            ` Version 2 (${fmt(v2.test_mae, 3)}) was scored on this season after version 1, so its bar is a second look, not a clean test.`}
         </>
       }
     >
       <Legend
         items={[
-          { color: MODEL, label: "Final model" },
+          { color: MODEL, label: "Final model (version 1)" },
+          ...(v2 ? [{ color: V2, label: "Version 2 (second look)" }] : []),
           { color: MODEL, label: "Other models", faded: true },
           { color: BASE, label: "Simple rules (baselines)", faded: true },
         ]}
@@ -139,7 +153,7 @@ function TestResults({ s }: { s: ModelStats }) {
           <BarChart data={rows} layout="vertical" margin={{ top: 0, right: 4, bottom: 0, left: 0 }} barCategoryGap="24%">
             <CartesianGrid horizontal={false} stroke="var(--color-chart-grid)" />
             <XAxis type="number" domain={[d0, 5.4]} allowDataOverflow {...AXIS} ticks={[4.5, 4.7, 4.9, 5.1, 5.3]} />
-            <YAxis yAxisId="n" type="category" dataKey="name" width={118} {...AXIS} interval={0} />
+            <YAxis yAxisId="n" type="category" dataKey="name" width={124} {...AXIS} interval={0} />
             <YAxis
               yAxisId="v"
               orientation="right"
@@ -168,7 +182,7 @@ function TestResults({ s }: { s: ModelStats }) {
             />
             <Bar yAxisId="n" dataKey={(r: (typeof rows)[number]) => [d0, r.test_mae]} radius={3} isAnimationActive={false}>
               {rows.map((r) => (
-                <Cell key={r.i} fill={r.is_baseline ? BASE : MODEL} fillOpacity={r.is_final ? 1 : 0.5} />
+                <Cell key={r.i} fill={r.is_baseline ? BASE : r.is_v2_final ? V2 : MODEL} fillOpacity={r.is_final || r.is_v2_final ? 1 : 0.5} />
               ))}
             </Bar>
           </BarChart>
@@ -203,7 +217,9 @@ function Timeline({ meta, s }: { meta: Meta | undefined; s: ModelStats }) {
     {
       icon: FlaskConical,
       title: `Tested once on ${s.test_season}`,
-      body: `${n0(s.test_games)} games the model had never seen. Scored one time at the end, and no choices changed afterward.`,
+      body: `${n0(s.test_games)} games the model had never seen. Scored one time at the end, and no choices changed afterward.${
+        s.version_2 ? " Version 2 came later, so its score on this season is a second look." : ""
+      }`,
       color: "bg-pred",
     },
     {
@@ -475,7 +491,7 @@ function Importance({ s }: { s: ModelStats }) {
   return (
     <ChartCard
       title="What the model relies on"
-      description="How much worse the model gets (extra points of error) when one input is scrambled. Top 12 of 33."
+      description="How much worse the version 1 model gets (extra points of error) when one input is scrambled. Top 12 of 33."
       takeaway={
         <>
           His usual scoring does most of the work. Recent shot volume and teammates being out add real information.
@@ -514,6 +530,8 @@ function Live({ s }: { s: ModelStats }) {
         <>
           On games it has never seen, it misses by {fmt(l.mae_model, 2)} points vs {fmt(l.mae_baseline_l5, 2)} for the last
           5 rule, close to its test score. Early weeks are noisy because there are only a few games behind each player.
+          {l.mae_model_v1 != null &&
+            ` This is version 2's clean check: version 1 on the same games misses by ${fmt(l.mae_model_v1, 2)}.`}
         </>
       }
     >
@@ -532,6 +550,7 @@ function Live({ s }: { s: ModelStats }) {
                 return (
                   <ChartTooltipBox title={r.label}>
                     <TooltipRow color={MODEL} label="Model" value={fmt(r.mae_model, 2)} />
+                    {r.mae_model_v1 != null && <TooltipRow label="Version 1" value={fmt(r.mae_model_v1, 2)} />}
                     <TooltipRow color={BASE} label="Last 5 rule" value={fmt(r.mae_baseline_l5, 2)} />
                     <TooltipRow label="Games" value={n0(r.games)} />
                   </ChartTooltipBox>
@@ -544,6 +563,122 @@ function Live({ s }: { s: ModelStats }) {
         </ResponsiveContainer>
       </div>
     </ChartCard>
+  );
+}
+
+// ------------------------------------------------------------------ version 2
+
+function BumpBar({ v, max, color, label }: { v: number; max: number; color: string; label: string }) {
+  return (
+    <div className="grid grid-cols-[4.5rem_1fr_3rem] items-center gap-2 text-xs">
+      <span className="text-muted-foreground">{label}</span>
+      <div className="h-4 rounded-sm bg-muted/60">
+        <div className="h-full rounded-sm" style={{ width: `${Math.max(2, (v / max) * 100)}%`, background: color }} />
+      </div>
+      <span className="text-right font-medium tabular-nums">{signed(v, 2)}</span>
+    </div>
+  );
+}
+
+function Version2Card({ v }: { v: Version2 }) {
+  const max = Math.max(...v.reaves.scenarios.flatMap((x) => [x.bump_v1, x.bump_v2]));
+  const scores = [
+    { what: "Cross-validation", v1: v.cv.mae_v1, v2: v.cv.mae_v2, note: `version 2 better in ${v.cv.folds_won} of ${v.cv.folds} folds` },
+    { what: "Test season, 2025-26", v1: v.test.mae_v1, v2: v.test.mae_v2, note: "version 1 = official; version 2 = second look" },
+    ...(v.live.mae_v1 != null && v.live.mae_v2 != null
+      ? [{ what: "Live, this season", v1: v.live.mae_v1, v2: v.live.mae_v2, note: `clean check, ${n0(v.live.games ?? 0)} games so far` }]
+      : []),
+  ];
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Users className="size-4 text-brand-ink" /> Version 2: who&apos;s out, by shots and not just minutes
+        </CardTitle>
+        <CardDescription>
+          Version 1 knew how many minutes were missing, not whose. Version 2 adds the usual shots (field goal attempts plus
+          free throw trips) of the players who are out.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-6 lg:grid-cols-3">
+        <div className="space-y-3">
+          <div className="text-sm font-medium">The Reaves example</div>
+          <p className="text-xs text-muted-foreground">
+            How much {v.reaves.example.split(",")[0]}&apos;s prediction goes up when a 35 minute teammate sits ({v.reaves.example.split(", ").slice(1).join(", ")}).
+          </p>
+          {v.reaves.scenarios.map((x) => (
+            <div key={x.label} className="space-y-1.5">
+              <div className="text-xs font-medium">
+                {x.label.startsWith("Reaves") ? "Austin Reaves out" : "Role player out"}{" "}
+                <span className="font-normal text-muted-foreground">
+                  ({fmt(x.teammate_min, 0)} min, {fmt(x.teammate_tsa, 0)} shots a game)
+                </span>
+              </div>
+              <BumpBar v={x.bump_v1} max={max} color={BASE} label="Version 1" />
+              <BumpBar v={x.bump_v2} max={max} color={MODEL} label="Version 2" />
+            </div>
+          ))}
+          <Takeaway>
+            Version 1 gives the same bump whoever sits. Version 2 knows a scorer&apos;s shots have to go somewhere.
+          </Takeaway>
+        </div>
+
+        <div className="space-y-3">
+          <div className="text-sm font-medium">Average miss, version 1 vs 2</div>
+          <div className="divide-y rounded-lg border text-sm">
+            {scores.map((r) => (
+              <div key={r.what} className="flex items-center gap-3 px-3 py-2.5">
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium">{r.what}</div>
+                  <div className="text-xs text-muted-foreground">{r.note}</div>
+                </div>
+                <div className="text-right tabular-nums">
+                  <div className="text-xs text-muted-foreground">{fmt(r.v1, 3)}</div>
+                  <div className="font-semibold text-brand-ink">{fmt(r.v2, 3)}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+            <Info className="mt-0.5 size-3.5 shrink-0" />
+            {v.test.note}
+          </p>
+        </div>
+
+        <div className="space-y-3">
+          <div className="text-sm font-medium">Where it helps (test season, second look)</div>
+          <div className="overflow-hidden rounded-lg border text-sm">
+            <table className="w-full">
+              <thead className="bg-muted/50 text-xs text-muted-foreground">
+                <tr>
+                  <th scope="col" className="px-3 py-2 text-left font-medium">Teammate shots out</th>
+                  <th scope="col" className="px-2 py-2 text-right font-medium">v1</th>
+                  <th scope="col" className="px-2 py-2 text-right font-medium">v2</th>
+                  <th scope="col" className="px-3 py-2 text-right font-medium">Gain</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y tabular-nums">
+                {v.by_shots_out.map((r) => (
+                  <tr key={r.group}>
+                    <th scope="row" className="px-3 py-2 text-left font-normal">
+                      {r.group}
+                      <div className="text-[11px] text-muted-foreground">{n0(r.games)} games</div>
+                    </th>
+                    <td className="px-2 py-2 text-right text-muted-foreground">{fmt(r.mae_v1, 2)}</td>
+                    <td className="px-2 py-2 text-right">{fmt(r.mae_v2, 2)}</td>
+                    <td className="px-3 py-2 text-right font-medium">{signed(r.v2_better_by, 3)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <Takeaway>
+            With nobody out the two versions see the same thing, so they tie. The gain shows up when a few shots are
+            missing; with 30+ shots out (several players), version 1&apos;s missing minutes already flag a big night.
+          </Takeaway>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -567,6 +702,7 @@ export function PerformancePage() {
       ) : (
         <>
           <KpiRow s={s} />
+          {s.version_2 && <Version2Card v={s.version_2} />}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
             <div className="lg:col-span-7">
               <TestResults s={s} />

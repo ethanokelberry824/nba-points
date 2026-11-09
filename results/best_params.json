@@ -27,5 +27,19 @@
     "hgb": 4.903360789216545
   },
   "blend_w_hgb": 0.6,
-  "best_model": "blend: 0.6 * HistGB + 0.4 * Huber"
+  "best_model": "blend: 0.6 * HistGB + 0.4 * Huber",
+  "version_2": {
+    "features": "FEATURES in build_features.py (35) = version 1's 33 + team_missing_tsa, opp_missing_tsa",
+    "same_settings_as_version_1": true,
+    "cv_mae": {
+      "blend": 4.892580287588364,
+      "hgb": 4.8987250647861265,
+      "huber": 4.901946189076725
+    },
+    "cv_mae_version_1_blend": 4.898978535337082,
+    "folds_won_vs_version_1": 5,
+    "test_mae_2025_26": 4.848240161646524,
+    "test_note": "second look at 2025-26; version 1's test MAE is the pre-committed result"
+  },
+  "current_version": "v2"
 }

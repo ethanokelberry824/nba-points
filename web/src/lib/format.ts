@@ -77,6 +77,8 @@ export const FEATURE_INFO: Record<string, FeatureInfo> = {
   games_last_7: { label: "Games in last 7 days", show: (v) => fmt(v, 0) },
   team_missing_min: { label: "Teammate minutes missing", show: (v) => fmt(v) },
   opp_missing_min: { label: "Opponent minutes missing", show: (v) => fmt(v) },
+  team_missing_tsa: { label: "Teammate shots missing", show: (v) => fmt(v) },
+  opp_missing_tsa: { label: "Opponent shots missing", show: (v) => fmt(v) },
   HOME: { label: "Home game", show: yesNo },
   pts_l3: { label: "Points, last 3", show: (v) => fmt(v) },
   pts_l5: { label: "Points, last 5", show: (v) => fmt(v) },

@@ -7,6 +7,9 @@ What they prove:
   - the site's features still match training (src/check_pregame.py, needs data/raw/)
   - /predict == predict_points(pregame_features(...)) exactly, for 5 players
   - the "why this number" steps add up to the prediction
+  - /rotations: usual shots (TSA) per player, and switching a player off moves
+    team_missing_min / team_missing_tsa by exactly his usual minutes / shots (version 2)
+  - opponent players' def_delta (context only) matches a by-hand recomputation
   - /sweep has 29 teams, agrees with /predict, and every opponent's features match a
     full pregame_features run
   - every endpoint: 200 on good input, 400 on bad input
@@ -88,6 +91,70 @@ def test_breakdown_adds_up(client, engine, test_players, game_date):
         assert [s["key"] for s in b["steps"]] == ["opponent", "schedule", "players_out",
                                                  "home", "form", "matchup"]
         assert b["approximate"] is True
+
+
+# ---------------------------------------------------------------- /rotations (version 2)
+
+def test_rotation_shots_feed_the_features(client, engine, test_players, game_date):
+    """usual_tsa = his season average of FGA + 0.44 * FTA through his last game, and switching
+    him off adds exactly his usual minutes and shots to team/opp_missing_min and _tsa."""
+    pid, team_id = test_players[0]
+    opp = other_team(engine, team_id, k=5)
+    rot = client.get("/rotations", params={"player_id": pid, "opp_id": opp, "date": game_date}).json()
+    base = client.post("/predict", json={"player_id": pid, "opp_id": opp, "date": game_date}).json()
+    cur = engine.players[engine.players["SEASON"] == engine.season]
+    for t in rot["teams"]:
+        on = [p for p in t["players"] if p["still_on_team"]]
+        assert on, t["abbr"]
+        for p in on:
+            g = cur[cur["PLAYER_ID"] == p["player_id"]]
+            assert p["usual_tsa"] == pytest.approx((g["FGA"] + 0.44 * g["FTA"]).mean(), abs=0.05)
+            assert p["usual_min"] == pytest.approx(g["MIN"].mean(), abs=0.05)
+        side = "team" if t["side"] == "team" else "opp"
+        star = max(on, key=lambda p: p["usual_tsa"])
+        body = {"player_id": pid, "opp_id": opp, "date": game_date,
+                "team_out_ids" if side == "team" else "opp_out_ids": [star["player_id"]]}
+        out = client.post("/predict", json=body).json()["features"]
+        f0 = base["features"]
+        assert out[f"{side}_missing_min"] - f0[f"{side}_missing_min"] == pytest.approx(star["usual_min"], abs=0.06)
+        assert out[f"{side}_missing_tsa"] - f0[f"{side}_missing_tsa"] == pytest.approx(star["usual_tsa"], abs=0.06)
+
+
+def test_def_delta_by_hand(client, engine, test_players, game_date):
+    """Opponent players' def_delta == his team's points allowed per 100 possessions in games
+    he missed (after his first game for them) minus games he played, from plain loops."""
+    teams, players = engine.teams, engine.players
+    t = teams[teams["SEASON"] == engine.season]
+    checked = 0
+    for pid, team_id in test_players:
+        opp = other_team(engine, team_id, k=2)
+        rot = client.get("/rotations", params={"player_id": pid, "opp_id": opp, "date": game_date}).json()
+        o = [x for x in rot["teams"] if x["side"] == "opponent"][0]
+        for p in o["players"]:
+            assert {"def_delta", "games_without", "games_with"} <= set(p)
+        cand = [p for p in o["players"] if p["games_without"] > 0]
+        if not cand:
+            continue
+        p = cand[0]
+        games = t[t["TEAM_ID"] == opp].sort_values("GAME_DATE")
+        mine = set(players[(players["PLAYER_ID"] == p["player_id"]) & (players["TEAM_ID"] == opp)]["GAME_ID"])
+        tot = {"with": [0.0, 0.0], "without": [0.0, 0.0]}
+        seen = False
+        for g in games.itertuples():
+            other = t[(t["GAME_ID"] == g.GAME_ID) & (t["TEAM_ID"] != opp)].iloc[0]
+            poss = ((g.FGA - g.OREB + g.TOV + 0.44 * g.FTA)
+                    + (other.FGA - other.OREB + other.TOV + 0.44 * other.FTA)) / 2
+            if g.GAME_ID in mine:
+                tot["with"][0] += other.PTS
+                tot["with"][1] += poss
+                seen = True
+            elif seen:
+                tot["without"][0] += other.PTS
+                tot["without"][1] += poss
+        delta = 100 * tot["without"][0] / tot["without"][1] - 100 * tot["with"][0] / tot["with"][1]
+        assert p["def_delta"] == pytest.approx(delta, abs=0.051), p
+        checked += 1
+    assert checked >= 1
 
 
 # ---------------------------------------------------------------- /sweep

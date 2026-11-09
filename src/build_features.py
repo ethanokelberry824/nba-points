@@ -179,19 +179,27 @@ def build_team_features(teams: pd.DataFrame) -> pd.DataFrame:
 
 
 def rotation_status(players: pd.DataFrame, team_feats: pd.DataFrame) -> pd.DataFrame:
-    """One row per team-game per rotation player: his usual minutes and whether he played.
+    """One row per team-game per rotation player: his usual minutes/shots and whether he played.
 
     "Rotation player" = played for this team in at least one of its last 10 games
                         AND averages 15+ min (skips deep-bench guys who just didn't get in).
     "Usual minutes"   = his season average minutes through his last game for this team.
-    Columns: TEAM_ID, GAME_ID, PLAYER_ID, avg_min_thru, played (1 = in the box score, 0 = not).
+    "Usual shots"     = same thing for true shooting attempts, TSA = FGA + 0.44 * FTA
+                        (added in version 2: losing an 18-shot scorer frees up more
+                        shots than losing a 6-shot defender who plays the same minutes).
+    Both only use games he already played (his last game is before tonight), so no leakage.
+    Columns: TEAM_ID, GAME_ID, PLAYER_ID, avg_min_thru, avg_tsa_thru,
+             played (1 = in the box score, 0 = not).
     Used by missing_rotation_minutes below, and by the site (src/pregame.py) to list
     each team's rotation for the "who's out tonight" checklist.
     """
-    p = players[["PLAYER_ID", "TEAM_ID", "SEASON", "GAME_ID", "GAME_DATE", "MIN"]].copy()
+    p = players[["PLAYER_ID", "TEAM_ID", "SEASON", "GAME_ID", "GAME_DATE", "MIN",
+                 "FGA", "FTA"]].copy()
+    p["TSA"] = p["FGA"] + 0.44 * p["FTA"]
     p = p.sort_values(["PLAYER_ID", "GAME_DATE"])
-    p["avg_min_thru"] = p.groupby(["PLAYER_ID", "SEASON"])["MIN"].transform(
-        lambda s: s.expanding().mean())
+    g = p.groupby(["PLAYER_ID", "SEASON"])
+    p["avg_min_thru"] = g["MIN"].transform(lambda s: s.expanding().mean())
+    p["avg_tsa_thru"] = g["TSA"].transform(lambda s: s.expanding().mean())
     sched = team_feats[["TEAM_ID", "SEASON", "GAME_ID", "team_game_num"]]
     p = p.merge(sched, on=["TEAM_ID", "SEASON", "GAME_ID"])
 
@@ -201,7 +209,8 @@ def rotation_status(players: pd.DataFrame, team_feats: pd.DataFrame) -> pd.DataF
     )
     cand = (cand.sort_values("team_game_num")
                 .drop_duplicates(["TEAM_ID", "SEASON", "target_num", "PLAYER_ID"], keep="last"))
-    cand = cand[["TEAM_ID", "SEASON", "target_num", "PLAYER_ID", "avg_min_thru"]].merge(
+    cand = cand[["TEAM_ID", "SEASON", "target_num", "PLAYER_ID", "avg_min_thru",
+                 "avg_tsa_thru"]].merge(
         sched.rename(columns={"team_game_num": "target_num"}),
         on=["TEAM_ID", "SEASON", "target_num"])
 
@@ -210,24 +219,26 @@ def rotation_status(players: pd.DataFrame, team_feats: pd.DataFrame) -> pd.DataF
     cand = cand.merge(played, on=["TEAM_ID", "GAME_ID", "PLAYER_ID"], how="left")
     cand["played"] = cand["played"].fillna(0).astype(int)
     cand = cand[cand["avg_min_thru"] >= MIN_AVG_MINUTES]
-    return cand[["TEAM_ID", "GAME_ID", "PLAYER_ID", "avg_min_thru", "played"]]
+    return cand[["TEAM_ID", "GAME_ID", "PLAYER_ID", "avg_min_thru", "avg_tsa_thru", "played"]]
 
 
 def missing_rotation_minutes(players: pd.DataFrame, team_feats: pd.DataFrame) -> pd.DataFrame:
-    """For each team-game: total usual minutes of rotation players who aren't playing.
+    """For each team-game: total usual minutes AND usual shots of rotation players who are out.
 
     If a rotation player (see rotation_status) isn't in tonight's box score (injury,
-    rest, trade, whatever), his usual minutes count as missing. After 10 games out
-    he drops off the list, since by then his teammates' own rolling averages
-    already reflect it.
+    rest, trade, whatever), his usual minutes count as missing (missing_min) and so
+    do his usual shot attempts (missing_tsa, version 2). After 10 games out he drops
+    off the list, since by then his teammates' own rolling averages already reflect it.
+    Team-games with nobody missing aren't listed (callers fill 0).
     """
     cand = rotation_status(players, team_feats)
     missing = cand[cand["played"] == 0]
     # fixed summing order, so the result doesn't wobble in the last decimal place
     missing = missing.sort_values(["TEAM_ID", "GAME_ID", "PLAYER_ID"])
 
-    return (missing.groupby(["TEAM_ID", "GAME_ID"])["avg_min_thru"].sum()
-                   .rename("missing_min").reset_index())
+    return (missing.groupby(["TEAM_ID", "GAME_ID"])[["avg_min_thru", "avg_tsa_thru"]].sum()
+                   .rename(columns={"avg_min_thru": "missing_min", "avg_tsa_thru": "missing_tsa"})
+                   .reset_index())
 
 
 # ---------------------------------------------------------------- player side
@@ -354,13 +365,17 @@ def build_player_features(players: pd.DataFrame, team_feats: pd.DataFrame) -> pd
     )
 
     # --- teammates out tonight (and opponent players out tonight)
+    # minutes (version 1) and shot volume (version 2) of rotation players sitting out
     miss = missing_rotation_minutes(players, team_feats)
-    df = df.merge(miss.rename(columns={"missing_min": "team_missing_min"}),
+    df = df.merge(miss.rename(columns={"missing_min": "team_missing_min",
+                                       "missing_tsa": "team_missing_tsa"}),
                   on=["TEAM_ID", "GAME_ID"], how="left")
     df = df.merge(miss.rename(columns={"TEAM_ID": "OPP_TEAM_ID",
-                                       "missing_min": "opp_missing_min"}),
+                                       "missing_min": "opp_missing_min",
+                                       "missing_tsa": "opp_missing_tsa"}),
                   on=["OPP_TEAM_ID", "GAME_ID"], how="left")
-    df[["team_missing_min", "opp_missing_min"]] = df[["team_missing_min", "opp_missing_min"]].fillna(0)
+    miss_cols = ["team_missing_min", "opp_missing_min", "team_missing_tsa", "opp_missing_tsa"]
+    df[miss_cols] = df[miss_cols].fillna(0)
 
     # --- schedule + blended team strength for his team and the opponent
     own = team_feats[["TEAM_ID", "GAME_ID", "rest_days", "back_to_back", "games_last_7",
@@ -387,13 +402,18 @@ FEATURES = [
     # role and context
     "HOME", "rest_days", "back_to_back", "games_last_7", "games_since_return",
     "games_missed", "starter_proxy",
-    # teammates
+    # teammates (and opponent players) out tonight
     "team_missing_min", "opp_missing_min",
     # opponent and environment (blended with last season)
     "opp_def_rtg", "opp_pace", "opp_pts_allowed", "net_rtg_gap", "abs_net_rtg_gap",
     # matchup history (test, don't assume)
     "pts_vs_opp_rel",
+    # version 2 (Nov 9): usual shot attempts (TSA) of rotation players out tonight
+    "team_missing_tsa", "opp_missing_tsa",
 ]
+
+# version 1's 33 features (the *_v1.joblib models use these)
+FEATURES_V1 = [f for f in FEATURES if f not in ("team_missing_tsa", "opp_missing_tsa")]
 
 # added in the Nov 8 feature pass (for marking them in the attribute-combinations notebook)
 NEW_FEATURES = [

@@ -1,0 +1,22 @@
+import sys, os, numpy as np, pandas as pd, warnings; warnings.filterwarnings('ignore')
+R=os.path.expanduser('~/mnt/nba-points'); sys.path.insert(0,R+'/src')
+import build_features as bf
+players=bf.load_logs('player'); teams=bf.load_logs('team'); tf=bf.build_team_features(teams)
+p=players[["PLAYER_ID","TEAM_ID","SEASON","GAME_ID","GAME_DATE","MIN","BLK","STL","DREB","PLUS_MINUS"]].copy()
+p["STOCKS"]=p.BLK+p.STL
+p=p.sort_values(["PLAYER_ID","GAME_DATE"]); g=p.groupby(["PLAYER_ID","SEASON"])
+for c in ["MIN","BLK","STOCKS","DREB","PLUS_MINUS"]: p["a_"+c]=g[c].transform(lambda s: s.expanding().mean())
+sched=tf[["TEAM_ID","SEASON","GAME_ID","team_game_num"]]; p=p.merge(sched,on=["TEAM_ID","SEASON","GAME_ID"])
+cols=["a_MIN","a_BLK","a_STOCKS","a_DREB","a_PLUS_MINUS"]
+cand=pd.concat([p.assign(target_num=p.team_game_num+k) for k in range(1,bf.ROTATION_LOOKBACK+1)])
+cand=cand.sort_values("team_game_num").drop_duplicates(["TEAM_ID","SEASON","target_num","PLAYER_ID"],keep="last")
+cand=cand[["TEAM_ID","SEASON","target_num","PLAYER_ID"]+cols].merge(sched.rename(columns={"team_game_num":"target_num"}),on=["TEAM_ID","SEASON","target_num"])
+cand=cand.merge(p[["TEAM_ID","GAME_ID","PLAYER_ID"]].assign(pl=1),on=["TEAM_ID","GAME_ID","PLAYER_ID"],how="left")
+cand=cand[cand.pl.isna()&(cand.a_MIN>=bf.MIN_AVG_MINUTES)].sort_values(["TEAM_ID","GAME_ID","PLAYER_ID"])
+cand["pm_pos"]=cand.a_PLUS_MINUS.clip(lower=0)
+m=cand.groupby(["TEAM_ID","GAME_ID"]).agg(opp_missing_blk=("a_BLK","sum"),opp_missing_stocks=("a_STOCKS","sum"),opp_missing_dreb=("a_DREB","sum"),opp_missing_pm=("pm_pos","sum")).reset_index().rename(columns={"TEAM_ID":"OPP_TEAM_ID"})
+full=pd.read_pickle('full.pkl').drop(columns=[c for c in m.columns if c.startswith('opp_missing_') and c!='opp_missing_min' and c!='opp_missing_tsa'],errors='ignore')
+full=full.merge(m,on=["OPP_TEAM_ID","GAME_ID"],how="left")
+for c in m.columns[2:]: full[c]=full[c].fillna(0)
+assert len(full)==len(pd.read_pickle('full.pkl'))
+full.to_pickle('full2.pkl'); print(full[list(m.columns[2:])].describe().round(2).T[['mean','max']])

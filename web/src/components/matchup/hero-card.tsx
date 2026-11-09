@@ -138,7 +138,7 @@ export function HeroCard({
                   <span
                     className={cn(
                       "mb-1.5 rounded-md px-2 py-1 text-xs font-medium tabular-nums",
-                      change.delta >= 0 ? "bg-pos/15 text-pos" : "bg-neg/15 text-neg",
+                      Math.abs(change.delta) < 0.05 ? "bg-muted text-muted-foreground" : change.delta > 0 ? "bg-pos/15 text-pos" : "bg-neg/15 text-neg",
                     )}
                   >
                     {change.text}

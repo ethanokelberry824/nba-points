@@ -20,6 +20,9 @@ export type Meta = {
   pct_within_3: number;
   pct_within_5: number;
   pct_off_10_plus: number;
+  /** the site's model is version 2; the test_mae above is version 1's pre-committed score */
+  model_version?: string;
+  v2?: { test_mae: number; pct_within_3: number; pct_within_5: number; pct_off_10_plus: number; note: string };
   default_date: string;
   days_since_stats: number;
   stale_days: number;
@@ -54,9 +57,16 @@ export type RotationPlayer = {
   player_id: number;
   name: string;
   usual_min: number;
+  /** usual shot attempts a game (FGA + 0.44 x FTA), version 2 */
+  usual_tsa: number;
   still_on_team: boolean;
   last_game: string;
   missed_last_team_game: boolean;
+  /** opponent players only. Context, NOT a model input: his team's defensive rating without him
+   * minus with him this season (+ = they defend worse without him). Show only with 5+ games without. */
+  def_delta?: number | null;
+  games_without?: number;
+  games_with?: number;
 };
 
 export type RotationTeam = {
@@ -98,6 +108,8 @@ export type PredictResp = {
     opp_pace_rank: number;
     team_missing_min: number;
     opp_missing_min: number;
+    team_missing_tsa: number;
+    opp_missing_tsa: number;
     rest_days: number;
   };
   low_minutes_warning: boolean;
@@ -152,6 +164,7 @@ export type SweepOpp = {
   opp_pace: number;
   opp_pace_rank: number;
   opp_missing_min: number;
+  opp_missing_tsa: number;
   pts_vs_opp_rel: number | null;
   meetings: number;
 };
@@ -186,7 +199,11 @@ export type ModelStats = {
     test_r2: number;
     cv_mae: number;
     is_baseline: boolean;
+    /** version 1 blend (the pre-committed test score) */
     is_final: boolean;
+    /** version 2 blend (a second look at the test season) */
+    is_v2_final?: boolean;
+    version?: string;
   }[];
   accuracy: {
     mae: number;
@@ -220,6 +237,7 @@ export type ModelStats = {
     stats_through: string;
     games: number;
     mae_model: number;
+    mae_model_v1?: number;
     mae_baseline_l5: number;
     pct_within_5: number;
     weeks: {
@@ -229,9 +247,25 @@ export type ModelStats = {
       last_game: string;
       games: number;
       mae_model: number;
+      mae_model_v1?: number;
       mae_baseline_l5: number;
     }[];
   };
+  version_2?: Version2;
+};
+
+export type Version2 = {
+  change: string;
+  new_features: string[];
+  cv: { mae_v1: number; mae_v2: number; folds_won: number; folds: number; rmse_v1: number; rmse_v2: number };
+  test: { mae_v1: number; mae_v2: number; note: string };
+  live: { mae_v1: number | null; mae_v2: number | null; mae_baseline_l5: number | null; games: number | null };
+  reaves: {
+    example: string;
+    everyone_playing: { v1: number; v2: number };
+    scenarios: { label: string; teammate_min: number; teammate_tsa: number; bump_v1: number; bump_v2: number }[];
+  };
+  by_shots_out: { group: string; games: number; mae_v1: number; mae_v2: number; v2_better_by: number }[];
 };
 
 // ------------------------------------------------------------------ slow-request tracker

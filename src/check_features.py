@@ -9,6 +9,8 @@ Sanity checks for the feature table.
 2. Hand check: recompute tsa_l5, ts_hot and pts_vs_opp_rel for one player-game
    straight from the raw logs with plain loops (no shared code with
    build_features.py) and compare.
+3. Hand check (version 2): recompute team_missing_min / team_missing_tsa and
+   opp_missing_min / opp_missing_tsa for the same game the same way.
 """
 
 import sys
@@ -109,12 +111,56 @@ def hand_check(players, full):
     print("  PASS" if ok else "  FAIL")
 
 
+def missing_by_hand(players, team, game_id, season):
+    """Usual minutes + usual shots of `team`'s rotation players who sat out game_id.
+
+    Plain loops over the raw logs: the team's games in order, then for each player who
+    played in one of the 10 team games before tonight, his season averages through
+    his most recent of those games (any team this season counts toward the average).
+    """
+    t_games = (players[(players["TEAM_ID"] == team) & (players["SEASON"] == season)]
+               .drop_duplicates("GAME_ID").sort_values("GAME_DATE")["GAME_ID"].tolist())
+    k = t_games.index(game_id)
+    window = t_games[max(0, k - 10):k]
+    tonight = set(players[(players["GAME_ID"] == game_id) & (players["TEAM_ID"] == team)]["PLAYER_ID"])
+    rows = []
+    for pid in players[(players["TEAM_ID"] == team) & players["GAME_ID"].isin(window)]["PLAYER_ID"].unique():
+        if pid in tonight:
+            continue
+        mine = players[(players["PLAYER_ID"] == pid) & (players["SEASON"] == season)].sort_values("GAME_DATE")
+        last = [g for g in window if g in set(mine[mine["TEAM_ID"] == team]["GAME_ID"])][-1]
+        thru = mine.iloc[:list(mine["GAME_ID"]).index(last) + 1]
+        avg_min = thru["MIN"].mean()
+        avg_tsa = (thru["FGA"] + 0.44 * thru["FTA"]).mean()
+        if avg_min >= 15:
+            rows.append((thru["PLAYER_NAME"].iloc[-1], avg_min, avg_tsa))
+    return rows
+
+
+def hand_check_missing(players, full):
+    game = players[(players["PLAYER_NAME"] == CHECK_PLAYER) & (players["GAME_DATE"] == CHECK_DATE)].iloc[0]
+    row = full[(full["PLAYER_NAME"] == CHECK_PLAYER) & (full["GAME_DATE"] == CHECK_DATE)].iloc[0]
+    print(f"\nHAND CHECK (version 2): players out, {CHECK_PLAYER}, {CHECK_DATE}")
+    ok = True
+    for side, team in [("team", row["TEAM_ID"]), ("opp", row["OPP_TEAM_ID"])]:
+        out = missing_by_hand(players, team, game["GAME_ID"], game["SEASON"])
+        for name, m, t in out:
+            print(f"  {side} out: {name:<24} usual {m:5.1f} min, {t:5.1f} shots")
+        mins, shots = sum(m for _, m, _ in out), sum(t for _, _, t in out)
+        for feat, val in [(f"{side}_missing_min", mins), (f"{side}_missing_tsa", shots)]:
+            match = np.isclose(val, row[feat])
+            ok &= match
+            print(f"  {feat:<17} {val:>8.4f}   {row[feat]:>8.4f}   {'ok' if match else 'MISMATCH'}")
+    print("  PASS" if ok else "  FAIL")
+
+
 def main():
     players = load_logs("player")
     teams = load_logs("team")
     full = build(players, teams)
     leak_test(players, teams, full)
     hand_check(players, full)
+    hand_check_missing(players, full)
 
 
 if __name__ == "__main__":

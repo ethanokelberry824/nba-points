@@ -23,7 +23,7 @@ Reference docs in `docs/`:
 
 - [x] Data pulled: `python src/pull_data.py` (re-run with `--refresh` to update the current season)
 - [x] Data extended back to 2017-18 (Nov 8) for the 3/5/8-season window comparison
-- [x] Feature table (`src/build_features.py` -> `data/processed/features.csv`, 153,400 rows, 33 features; rebuilt Nov 8)
+- [x] Feature table (`src/build_features.py` -> `data/processed/features.csv`, 154,051 rows, 35 features; rebuilt Nov 9 for version 2)
 - [x] Leak test + hand check (`python src/check_features.py`, both PASS Nov 8)
 - [x] EDA notebook (`notebooks/01_eda.ipynb`; saved outputs are from the Nov 3 feature set, re-run it if you need current numbers)
 - [x] Attribute combinations notebook (`notebooks/01b_attribute_combinations.ipynb`, class workflow step 4)
@@ -31,7 +31,7 @@ Reference docs in `docs/`:
 - [x] Models part 2a: training window, tuning, blend, two-stage (`02_models.ipynb`, Nov 8; `results/cv_results_part2a.csv`, `results/best_params.json`; exploratory search in `results/search/`)
 - [x] Models part 2b: final fit, 2025-26 test set scored ONCE, models saved (`02_models.ipynb`, Nov 8; `results/test_results.csv`, figures 10-14, `models/final_model.joblib` + `models/deploy_model.joblib`, `src/predict.py`)
 - [x] Streamlit app (`app/streamlit_app.py`, Nov 8): runs locally, match test PASS (`python src/check_pregame.py`). See "Site (built Nov 8)" below.
-- [x] FastAPI backend for the Next.js site (`api/`, Nov 8): 9 endpoints, 10 pytest tests PASS (`pytest api/tests -s`). See "API (built Nov 8)" below.
+- [x] FastAPI backend for the Next.js site (`api/`, Nov 8): 9 endpoints, 12 pytest tests PASS (2 added Nov 9 for version 2) (`pytest api/tests -s`). See "API (built Nov 8)" below.
 - [x] Local git repo (Nov 8): `git init -b main`, 3 commits on main, .gitignore checked (163 files, 18 MB, largest 0.9 MB, no secrets). README.md rewritten, DEPLOY.md written (Render + Vercel click-by-click). CORS_ORIGINS now strips a trailing slash. docs/assignment.md and docs/class_example_housing.py are gitignored (class materials, kept local only, scrubbed from history).
 - [x] Pushed to GitHub (Nov 8): https://github.com/ethanokelberry824/nba-points (public, branch main)
 - [ ] Deploy the API on Render (DEPLOY.md a: Docker, root dir empty, Dockerfile path ./api/Dockerfile, context `.`, free, health check /health)
@@ -39,6 +39,7 @@ Reference docs in `docs/`:
 - [x] GitHub URL in `GITHUB_URL` on the How It Works page (Nov 8)
 - [ ] Deploy the front end on Vercel (root directory `web/`, set `NEXT_PUBLIC_API_URL` to the hosted API; add the Vercel URL to the API's `CORS_ORIGINS`)
 - [ ] Streamlit Cloud deploy of the backup app (optional once the Next.js site is live)
+- [x] Version 2 (Nov 9, branch `v2-shot-volume`, NOT merged to main): + team_missing_tsa / opp_missing_tsa. See "Version 2 (Nov 9)" below. Waiting on Ethan's review before merging (the live site deploys from main).
 - [ ] Slides
 - [ ] Before Dec 12: update 01_eda.ipynb to the new feature names so the whole project re-runs end to end
 
@@ -86,7 +87,7 @@ Hyperparameters: Ridge alpha; HGB learning_rate, max_iter, max_depth, min_sample
 
 Validation (from the proposal; training window updated Nov 8, see part 2a results): hold out 2025-26 as the test set. Train on 2018-19 to 2024-25 (was 2023-24 and 2024-25 before the window comparison). Tune with TimeSeriesSplit inside GridSearchCV / RandomizedSearchCV. Test set gets used once at the end. Optional experiment: retrain on 3, 5, and 8 seasons and compare MAE on the same test set. features.csv has a SEASON column so the models notebook can pick the window. Per the proposal, window sizes count seasons of data TOTAL, including the 2025-26 test season: 3 = train 2023-24 to 2024-25 (the default), 5 = train 2021-22 to 2024-25, 8 = train 2018-19 to 2024-25. All three fit the data we have, so no extra pull is needed (resolved Nov 8; replaces the earlier OPEN note).
 
-## Features (33, in `FEATURES` in `src/build_features.py`; let CV and feature importance decide)
+## Features (35, in `FEATURES` in `src/build_features.py`; version 1's 33 are `FEATURES_V1`)
 
 All of them use only games before the one being predicted. k = 10 for blends, small-sample shrink = n / (n + 3).
 
@@ -108,8 +109,9 @@ Role and context:
 - `games_missed`: length of his most recent absence, carried until he's 10 games back, then 0
 - `starter_proxy`: 1 if min_l5 >= 28 (stand-in for real starter data)
 
-Teammates:
+Teammates (who's out):
 - `team_missing_min`, `opp_missing_min`: usual minutes of rotation players sitting out tonight, his team and the opponent
+- `team_missing_tsa`, `opp_missing_tsa` (version 2, Nov 9): usual shot attempts (season-average TSA = FGA + 0.44 * FTA through his last game) of the same missing rotation players. Same rotation rule and expanding average as usual minutes (`rotation_status()` returns avg_min_thru and avg_tsa_thru).
 
 Opponent and environment (all blended with the team's full previous season, k = 10; first game = last season's value):
 - `opp_def_rtg`, `opp_pace`, `opp_pts_allowed`
@@ -129,11 +131,12 @@ Other decisions:
 - Train/test split by date, never random.
 - Fit preprocessing on training data only (keep it inside the Pipeline).
 
-## Feature table notes (rebuilt Nov 8)
+## Feature table notes (rebuilt Nov 8, version 2 columns added Nov 9)
 
-- `data/processed/features.csv`: 153,400 rows, 33 features, seasons 2018-19 to 2026-27. Rows per season: 2018-19 19,985 | 2019-20 17,363 | 2020-21 17,436 | 2021-22 19,308 | 2022-23 19,276 | 2023-24 19,103 | 2024-25 19,365 | 2025-26 19,832 | 2026-27 1,732 (through Nov 2). ~300 per season are opening-night rows that used to be dropped.
+- `data/processed/features.csv`: 154,051 rows, 35 features, seasons 2018-19 to 2026-27. Rows per season: 2018-19 19,985 | 2019-20 17,363 | 2020-21 17,436 | 2021-22 19,308 | 2022-23 19,276 | 2023-24 19,103 | 2024-25 19,365 | 2025-26 19,832 | 2026-27 2,383 (through Nov 8). ~300 per season are opening-night rows that used to be dropped.
+- Version 2 rebuild (Nov 9): all 33 version 1 columns identical on every row (team_missing_min included); team_missing_tsa mean 18.1, max 108.8, corr 0.967 with team_missing_min.
 - Default split: train = 2023-24 + 2024-25 (38,468 rows), test = 2025-26. The 2026-27 rows are NOT part of train or test; filter them out before splitting. They're only for the live site (and maybe a "how does it do this season" bonus check at the end).
-- Leak test (`src/check_features.py`): rebuilt with every game after 2025-01-15 deleted from the raw logs; all 33 features for games before that date are identical to the full build. Hand-checked tsa_l5, ts_hot and pts_vs_opp_rel for Jayson Tatum on 2025-02-12 against the raw logs.
+- Leak test (`src/check_features.py`): rebuilt with every game after 2025-01-15 deleted from the raw logs; all 35 features for games before that date are identical to the full build (PASS Nov 9). Hand-checked tsa_l5, ts_hot and pts_vs_opp_rel for Jayson Tatum on 2025-02-12 against the raw logs, plus (Nov 9) team/opp_missing_min and _tsa for the same game with plain loops (Brown + Holiday out = 65.6 min, 30.6 shots).
 - Opponent blend fixed the early-season noise: in a team's games 2 to 10, opp_def_rtg used to range 82 to 144, now 102 to 118.
 - Attribute combinations (`01b`): pts_blend is the single best feature (0.678 corr with PTS). Against points above his own average, team_missing_min leads (0.145), then min_trend and opponent defense. In a player's first 5 games pts_blend beats pts_season (0.690 vs 0.637). abs_net_rtg_gap is ~0 for points and minutes; kept, CV decides.
 - Deferred: real starter vs bench (needs a box score call per game). starter_proxy stands in for now. Only pull box scores if the models show a gap that role explains.
@@ -198,13 +201,29 @@ The 2025-26 test set has now been scored. It's a report, not a decision: no mode
 - Held up: same ranking as CV. Every approach (baselines too) was ~0.03-0.04 better on 2025-26 than in CV, so it was an easier season, not luck. Gap over pts_l5: 0.380 on test vs 0.376 in CV (7.3%).
 - Breakdowns (final blend vs pts_l5): beats it in every group. Games 0-10 4.91 (gain 0.41), 31+ 4.84. Hardest months Oct 5.05 / Apr 5.09, easiest Jan 4.63. Starters 5.54 vs bench 4.37. Tiers: <10 ppg 4.09, 10-20 5.19, 20+ 6.25 (gain 0.52 for stars). Figures 10-14 in `figures/`.
 - Predictions range 1.7 to 35.1 (actual 0 to 83): it predicts the typical night. 39% within 3 points, 60% within 5, 10% off by 10+.
-- Live check, deploy model on 2026-27 through Nov 2 (1,732 games): 4.908 vs pts_l5 5.485.
+- Live check, deploy model on 2026-27 through Nov 2 (1,732 games): 4.908 vs pts_l5 5.485. Through Nov 8 (2,383 games): 4.855 vs 5.342.
 
-Saved models (each a dict: model, features, blend_w, train_seasons, train_rows, params, cv_mae, test_mae_2025_26, sklearn_version):
-- `models/final_model.joblib`: trained 2018-19 to 2024-25; reproduces the 4.857 test MAE.
-- `models/deploy_model.joblib`: same recipe refit on 2018-19 to 2025-26 (151,668 rows). Used by the site; its expected accuracy = the test score.
+Saved models (each a dict: model, version, features, blend_w, train_seasons, train_rows, params, cv_mae, test_mae_2025_26, sklearn_version). Since Nov 9 version 1 lives in `*_v1.joblib` and the unsuffixed files are version 2:
+- `models/final_model_v1.joblib`: trained 2018-19 to 2024-25; reproduces the 4.857 test MAE.
+- `models/deploy_model_v1.joblib`: same recipe refit on 2018-19 to 2025-26 (151,668 rows).
+- `models/final_model.joblib` / `models/deploy_model.joblib`: version 2, same windows. The site loads deploy_model.joblib.
 - `src/blend_model.py`: `BlendRegressor` (the saved models need to import it). `src/predict.py`: `predict_points(feature_rows)` loads the deploy model; `python src/predict.py` is a quick check.
 - For Streamlit Cloud: pin `scikit-learn==1.9.1` in requirements.txt (pickled models need the same sklearn version). After a data refresh, the deploy model doesn't need retraining mid-season; only the feature rows change.
+
+## Version 2 (Nov 9): who's out, by shots not just minutes
+
+Branch `v2-shot-volume` (pushed, NOT merged; main = the live site until Ethan reviews). Notebook section "Version 2" at the end of `02_models.ipynb` (whole notebook re-run top to bottom Nov 9, 13 min; version 1 reproduced exactly). Experiments that led here: `results/search/v2_experiments/` (README + scripts).
+
+- Idea: version 1 only knew how many minutes were missing, not whose. Reaves (35 min, 18 shots) out looked the same as a 35-min, 6-shot role player out.
+- CV (same folds, same tuned params from best_params.json, no re-tuning, w = 0.6): blend 4.8990 -> 4.8926 (5 of 5 folds), HistGB 4.9034 -> 4.8987 (5/5), Huber 4.9087 -> 4.9019 (4/5). RMSE 6.329 -> 6.321. Table: `results/cv_results_v2.csv`. KEPT.
+- Reaves example (fixed row: Luka 2026-11-06 vs POR, nobody out; models trained 2018-19 to 2024-25; `results/v2_reaves_example.csv`): version 1 +0.80 for any 34.6-min teammate; version 2 +1.30 for Reaves (18.1 shots), +0.35 for a 6-shot player. (Search script got +1.19 / +0.25 on an earlier row: same pattern.)
+- Didn't help (search scripts): missing points (4.8927), biggest shooter out (4.8948), all three (4.8903, noise), and 5 missing-defender features vs version 2: blocks 4.8920 (3/5), blocks+steals 4.8921, dreb 4.8918 (3/5), plus-minus 4.8924 (2/5), with/without def rating 4.8918 (4/5 but 0.0005 = noise). Why: box scores and game-level splits can't isolate defense.
+- Test 2025-26 (SECOND LOOK, version 1's 4.857 stays the pre-committed result; the live 2026-27 tracker is version 2's clean check): v2 blend 4.848 (RMSE 6.264), v2 HistGB 4.853, v2 Huber 4.858. By teammate shots out: nobody 4.826 = 4.826, <15 shots -0.015, 15-30 -0.016, 30+ no gain (`results/v2_test_by_shots_out.csv`). `results/test_results.csv` has both versions (`version` column; v2 rows are named "v2 ...").
+- Live 2026-27 through Nov 8 (2,383 games): v2 4.853, v1 4.855, pts_l5 5.342.
+- best_params.json: same params plus `version_2` block and `current_version: "v2"`.
+- Site decisions: headline accuracy everywhere stays version 1's 4.86 (pre-committed); version 2's 4.85 is shown next to it labeled "second look". Likely-range bands (error_bands.json) now come from version 2's test misses (it's the model making the predictions; offsets barely moved). Model Performance breakdowns (month/tier/role/scatter/importance) stay version 1 (match notebook figures 10-14).
+- Defensive context (site only, NOT a feature): `build_site_data.py` writes `data/site/def_onoff.csv` (per current-season player-team: games_with, games_without, def rating with/without, raw def_delta = without minus with, possession-weighted, "without" only counts games after his first game for that team). /rotations returns def_delta / games_without / games_with for opponent players. Opponent card shows a "Key defender" line when def_delta >= 2 AND 5+ games without AND 5+ games with (the "with" minimum was added Nov 9: early-season raw gaps were wild, e.g. Kawhi +26.9 with only 2 games played; one constant in opponent-card.tsx), up to 2 lines, highlighted amber when he's switched off. Nov 9: 7 such lines league-wide; Wembanyama has 0 games missed in 2026-27, so none for SAS. His 2025-26 raw def_delta was +6.9 (18 games); the +3.9 in the experiments was the shrunk value.
+- Wembanyama 2025-26 (for slides / How It Works): opponents scored 117.5 team points without him (18 games) vs 109.8 with him (64). Players facing SAS without him beat the model by +0.74 on average.
 
 ## Background: how pro projection systems work (use in slides)
 
@@ -251,7 +270,7 @@ Refresh the data: `./refresh.sh` (pull_data --refresh -> build_features -> build
   - Tonight's fake box score = everyone whose latest team is his team or the opponent, minus the checked-off players. The training rule then computes team/opp_missing_min. So a player traded away within the last 10 team games counts as missing automatically (same as training). Each out list applies only to its own team (a GSW->ATL trade bug caught by the match test).
   - `tonight_rotations(...)` lists each team's rotation (training definition) for the checklist. Uses `rotation_status()`, split out of `missing_rotation_minutes()` in build_features.py (refactor verified: full rebuild identical to features.csv, all 153,400 rows x 33 features).
   - Optional args: `players`/`teams` (default: data/site files), `team_id` (default: team of his latest game).
-- `src/check_pregame.py` (match test): 25 random real games (15 from 2025-26, 10 from 2026-27), rebuilt with the actual date/home/opponent and the players who actually sat out. All 33 features match features.csv (max diff 3e-14); 2026-27 games also checked against the site files. Also passed a one-off 400-game run.
+- `src/check_pregame.py` (match test): 25 random real games (15 from 2025-26, 10 from 2026-27), rebuilt with the actual date/home/opponent and the players who actually sat out. All 33 features match features.csv (max diff 3e-14; all 35 on Nov 9, max diff 2.8e-14); 2026-27 games also checked against the site files. Also passed a one-off 400-game run.
 - `src/build_site_data.py` -> `data/site/` (~0.6 MB): player_logs.csv.gz (this season everyone + 2 seasons back for current players), team_logs.csv.gz (this + last season), players.csv, teams.csv, meta.json (stats-through date + test accuracy: MAE 4.86, pts_l5 5.24, 39% within 3, 60% within 5, 10% off by 10+, recomputed from final_model and checked against test_results.csv).
 - App: player search (default = top scorer), opponent, home/away, date (default today, min = day after stats-through). Who's out = two collapsible checklists (rotation players, usual minutes, "last played" hint if he missed the team's last game). Shows the prediction, season avg, last-5 avg, change vs nobody out, last-10 chart with a dashed prediction line, the accuracy note, "How it works", "Stats through". Warns when the player averages <15 min (outside the training filter).
 - Spot checks (Nov 8 data): Luka 32.6 vs ATL (season 38.3: still blended with last season 8 games in), +0.9 with Reaves out; SGA 29.6, +0.9 with Jalen Williams out; Jaylin Williams (bench) 5.3.
@@ -272,8 +291,8 @@ Files: `api/main.py` (routes, CORS, errors -> 400), `api/engine.py` (all logic, 
 Endpoints:
 - `GET /health`, `GET /meta` (season, stats_through, test MAE 4.86 vs 5.24, % within 3/5, % off 10+, default_date, days_since_stats, stale_days + stale_warning for the default date, likely-range offsets).
 - `GET /players` (id, name, team, games, ppg, mpg, last5_ppg), `GET /teams?date` (blended def rating + pace going into that date, ranks: 1 = toughest D / fastest).
-- `GET /rotations?player_id&opp_id&date&home` (tonight_rotations; `still_on_team=false` = traded away, already counted out; `missed_last_team_game` hint).
-- `POST /predict {player_id, opp_id, date, home, team_out_ids, opp_out_ids}`: prediction (unrounded, = predict_points(pregame_features(...)) exactly), prediction_everyone_playing, likely_range, key_numbers, breakdown, all 33 features, stale_days + stale_warning.
+- `GET /rotations?player_id&opp_id&date&home` (tonight_rotations; usual_min + usual_tsa (version 2); `still_on_team=false` = traded away, already counted out; `missed_last_team_game` hint; opponent players also get def_delta / games_without / games_with, context only).
+- `POST /predict {player_id, opp_id, date, home, team_out_ids, opp_out_ids}`: prediction (unrounded, = predict_points(pregame_features(...)) exactly), prediction_everyone_playing, likely_range, key_numbers, breakdown (players_out includes the shot features), all 35 features, stale_days + stale_warning.
 - Stale data (added Nov 8, display only, no math change): `stale_days` = game date minus stats_through; `stale_warning` is set when it's > 2: "Stats are N days old, so rest and recent form may be off. Refresh the data for accurate predictions." Tested in `test_stale_days`.
 - `GET /sweep?player_id&date&home`: all 29 opponents, sorted, nobody out. Also `blended_avg` (his pts_blend going in, for the site's reference line; added Nov 8, no math change, tested against /predict).
 - `GET /history?player_id`: this season's games (date, opp, pts, min, tsa) + games vs each opponent this season and last.
@@ -290,19 +309,19 @@ How the pieces work:
 ## Front end (built Nov 8)
 
 Run it (two terminals): `source .venv/bin/activate && uvicorn api.main:app --reload` (project root), then `cd web && npm run dev` -> http://localhost:3000. Node 26 was installed with Homebrew on Nov 8 (`brew install node`); first time in `web/`: `npm install`.
-Checks: `npm run lint`, `npm run build` (all pages prerender as static), `npm run screenshots` (needs both servers). The screenshot script loads all 4 pages at desktop (1440) and phone (390) in dark and light (24 screenshots in `web/screenshots/`). It fails on leftover skeletons, error cards, console errors, sideways scroll on a phone, or any serious/critical axe accessibility problem (contrast, labels, ARIA). It also checks: star / bench / teammate switched off, Cmd+K, 3 keyboard switch flips = 1 request, Copy link reopens the same matchup, a vs Every Team bar click opens that matchup, the 29-row table, sidebar links keep the player, the 404 page, and the cold-start message.
+Checks: `npm run lint`, `npm run build` (all pages prerender as static), `npm run screenshots` (needs both servers). The screenshot script loads all 4 pages at desktop (1440) and phone (390) in dark and light (24 screenshots in `web/screenshots/`). It fails on leftover skeletons, error cards, console errors, sideways scroll on a phone, or any serious/critical axe accessibility problem (contrast, labels, ARIA). Version 2 cases (desktop, Nov 9): Luka with Reaves off, Luka vs SAS with Wembanyama off (opponent section collapsed by default, then expanded), and the first opponent with a Key defender line switched off (must highlight); these also run axe after a switch-off, which caught the faded initials badge (2.49:1 contrast, now a dashed outline). It also checks: star / bench / teammate switched off, Cmd+K, 3 keyboard switch flips = 1 request, Copy link reopens the same matchup, a vs Every Team bar click opens that matchup, the 29-row table, sidebar links keep the player, the 404 page, and the cold-start message.
 
 Stack: Next.js 16.4 (App Router, `cacheComponents` on), TypeScript, Tailwind 4, shadcn/ui (Radix base, Nova preset), Recharts 3 styled like Tremor Raw, React Bits SpotlightCard + CountUp, SWR, next-themes (dark by default). API URL from `NEXT_PUBLIC_API_URL` (default http://localhost:8000, see `web/.env.example`). No team logos or headshots: team abbreviations and player initials only. No em dashes in UI text.
 
 - Layout: collapsible sidebar (Matchup, vs Every Team, Model Performance, How It Works; footer shows test MAE), top bar (Cmd+K player search, "Stats through <date>", light/dark toggle), banners under it: "Waking up the model..." when any request takes > 3 s (cold start), and the API's stale warning (the Matchup page's date overrides /meta's).
-- Matchup page (`web/src/components/matchup/`, wired in `matchup-page.tsx`): controls (player via Cmd+K, opponent, home/away, date), Copy link button -> hero (CountUp number, likely-range band, "Everyone playing: Z", usual minutes (his blended average, not a minutes prediction) / rest / tier, all 6 factors as small diverging bars) -> who's out (switch per rotation player, live update, "+0.9 with Reaves out") -> 4 KPI cards with sparklines -> "why this number" waterfall (hover = feature values vs neutral) -> opponent card (plain-word ranks) -> recent form chart (points / minutes / shots, season avg line, dashed prediction) -> history vs this opponent.
+- Matchup page (`web/src/components/matchup/`, wired in `matchup-page.tsx`): controls (player via Cmd+K, opponent, home/away, date), Copy link button -> hero (CountUp number, likely-range band, "Everyone playing: Z", usual minutes (his blended average, not a minutes prediction) / rest / tier, all 6 factors as small diverging bars) -> who's out (his team's rotation with "36 min, 19 shots" per player and a switch each, live update, "+1.3 with Reaves out"; the opponent's rotation is collapsed behind "Opponent players out (small effect)" with the missing-defender note, and opens by itself when the link already has opponent players out; a ~0 change shows as a gray chip) -> 4 KPI cards with sparklines -> "why this number" waterfall (hover = feature values vs neutral) -> opponent card (plain-word ranks, "Key defender" context line) -> recent form chart (points / minutes / shots, season avg line, dashed prediction) -> history vs this opponent.
 - State lives in the URL (`?player=&opp=&home=1|0&date=&out=&oout=`), read by `web/src/lib/use-selection.ts` (shared by Matchup and vs Every Team). Once defaults are resolved, the full set is written back into the URL, so Copy link always gives a complete link (tested: reopens the same number, side and players out). Sidebar links carry player / opponent / home / date between the two pages. Switch flips are debounced 350 ms (3 quick flips = 1 /predict call, checked by the screenshot script). Fast-click bug fixed: toggles read the out list from the URL, not the last render.
 - All numbers come from the API; the site does no prediction math. Checked Nov 8: Luka vs ATL home 32.6, with Reaves out 33.5 (+0.9), range 26.9 to 39.6, same as calling /predict directly.
 - History card: "vs his usual" is the pts_vs_opp_rel feature value (Luka vs ATL -4.9), but its effect on the prediction is ~0 (waterfall step 0.0). The card says so. Good presentation point: the model learned past meetings barely predict the next one (matches its ~0 permutation importance).
 - Vendored code edits: React Bits SpotlightCard uses cn() class merging and sets its settings ref in useLayoutEffect; shadcn `use-mobile` uses useSyncExternalStore (both for the React 19 lint rules). shadcn's new `CommandDialog` doesn't wrap children in `<Command>`, so `player-search.tsx` does.
 - vs Every Team (`web/src/components/sweep/sweep-page.tsx`, /sweep + /history): same player / home / date controls, 4 summary cards (best, toughest, spread, blended average), horizontal bar chart of all 29 opponents best to toughest (3 best green, 3 toughest red, dashed line at his blended average, zoomed axis with a note), click a bar -> Matchup with that opponent. Table view: rank, opponent, prediction + range, defense rank, pace rank, his history vs them. Note: for Luka on Nov 8 every opponent is below his blended average (35.5) because recent form and rest pull him down; the chart shows that honestly.
-- Model Performance (`web/src/components/performance/performance-page.tsx`, /model-stats): KPIs (test MAE 4.86, last-5 rule 5.24, 60% within 5, live 2026-27 4.91), every model on the test season, how-we-tested timeline, error by month / tier / role, predicted vs actual scatter (2,000 games, diagonal), "how low can it go" (5.25 / 4.87 / 4.18 cheating model), top 12 feature importance bar list, live tracker by week. Each chart has a one-paragraph plain-words takeaway.
-- How It Works (`web/src/app/how-it-works/page.tsx`, static, no API): 8 sections (question, data, features in 5 groups that add up to 33, leakage tests, models tried + what didn't help, accuracy, limitations, credits with the personal site link, a GitHub placeholder and the AI-use note), with an "On this page" nav on wide screens.
+- Model Performance (`web/src/components/performance/performance-page.tsx`, /model-stats): KPIs (test MAE 4.86 (v1, pre-committed; v2 4.85 second look), last-5 rule 5.24, 60% within 5, live 2026-27 version 2), Version 2 card (Reaves bump bars, CV / test / live v1 vs v2, gain by teammate shots out), every model on the test season (v1 models + the v2 blend in orange), how-we-tested timeline, error by month / tier / role, predicted vs actual scatter (2,000 games, diagonal), "how low can it go" (5.25 / 4.87 / 4.18 cheating model), top 12 feature importance bar list, live tracker by week (version 2, version 1 in the tooltip). Each chart has a one-paragraph plain-words takeaway.
+- How It Works (`web/src/app/how-it-works/page.tsx`, static, no API, numbers hardcoded: update them if the model changes): 8 sections (question, data, features in 5 groups that add up to 35, version 2 box with the Reaves example, missing-defender limitation with the Wembanyama numbers, leakage tests, models tried + what didn't help, accuracy, limitations, credits with the personal site link, a GitHub placeholder and the AI-use note), with an "On this page" nav on wide screens.
 - Polish: `template.tsx` fades each page in (off for reduced motion), `not-found.tsx` 404, title template "<page> | NBA Points Predictor", text favicon `icon.tsx` / `apple-icon.tsx` ("PP" on blue), share image `opengraph-image.tsx` (text + simple bars, no logos). Shared page pieces in `web/src/components/page-shell.tsx` (PageHeader, CopyLinkButton, ApiErrorCard, Takeaway); zoomed axes use `niceDomain()` in `charts.tsx` for even ticks.
 - Colors (globals.css): `brand` (charts), `brand-ink` (blue text), `brand-solid` (blue behind white text), `pos` / `neg` / `pred`. Light mode uses darker pos/neg/pred and muted-foreground so text passes 4.5:1 contrast (axe found these Nov 8 and they were fixed).
 - Vercel: set the project root to `web/`, env vars `NEXT_PUBLIC_API_URL` = hosted API URL and `NEXT_PUBLIC_SITE_URL` = the Vercel URL (for absolute share-image links), and add the Vercel URL to the API's `CORS_ORIGINS`.
@@ -310,6 +329,7 @@ Stack: Next.js 16.4 (App Router, `cacheComponents` on), TypeScript, Tailwind 4, 
 ## Known limitations (say these openly)
 
 - No pregame injury news. Foul trouble is random. Blowouts, rest, and rotation changes are only partly predictable. Pros have news feeds; this model doesn't.
+- Missing defenders: five box-score / with-without features failed (version 2 experiments). Wembanyama 2025-26: opponents 117.5 pts without him vs 109.8 with. The site shows the with/without number as context only.
 - Site feature to offset it: user checks off who's out tonight and the prediction updates.
 
 ## Stretch goals (after the core works)

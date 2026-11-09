@@ -1,12 +1,23 @@
 {
   "season": "2026-27",
   "stats_through": "2026-11-08",
-  "built_at": "2026-11-08 22:07",
+  "built_at": "2026-11-09 11:09",
+  "model_version": "v2",
   "test_season": "2025-26",
   "test_games": 19832,
   "test_mae": 4.86,
   "baseline_l5_mae": 5.24,
   "pct_within_3": 39,
   "pct_within_5": 60,
-  "pct_off_10_plus": 10
+  "pct_off_10_plus": 10,
+  "v2": {
+    "test_season": "2025-26",
+    "test_games": 19832,
+    "test_mae": 4.85,
+    "baseline_l5_mae": 5.24,
+    "pct_within_3": 39,
+    "pct_within_5": 60,
+    "pct_off_10_plus": 10,
+    "note": "Second look at the 2025-26 test season (it was already used for version 1). Version 1's score is the pre-committed result; the live 2026-27 season is the clean check for version 2."
+  }
 }

@@ -10,6 +10,9 @@
  *   - everything loaded (no skeletons left, no error cards, no console errors)
  *   - no sideways scrolling on a phone
  *   - axe accessibility scan (contrast, labels, ARIA): no serious or critical problems
+ * Version 2 cases (desktop): Luka with Austin Reaves switched off, Luka vs SAS with Victor
+ * Wembanyama switched off (opponent section expanded), and an opponent with a "Key defender"
+ * line switched off (the line gets highlighted).
  * Plus behavior checks: star / bench / teammate switched off, Cmd+K search, 3 quick
  * switch flips = 1 request, Copy link reopens the same matchup, clicking a bar on
  * vs Every Team opens that matchup, the table view, sidebar links keep the player,
@@ -139,6 +142,87 @@ for (const [device, viewport, scale] of [["desktop", DESKTOP, 1], ["phone", PHON
     await snap(page, `matchup-teammate-out-${device}-dark`);
     await ctx.close();
   }
+}
+
+// ---------------------------------------------------------------- version 2 cases (desktop)
+
+const byName = (n) => players.find((p) => p.name.startsWith(n));
+const luka = byName("Luka Don");
+const reaves = byName("Austin Reaves");
+const wemby = byName("Victor Wemb");
+const allTeams = (await (await fetch(`${API}/teams`)).json()).teams;
+const SHOTS = /^\d+ min, \d+ shots/;
+
+const switchOff = async (page, name) => {
+  const sw = page.getByRole("switch", { name: `${name} playing` });
+  await sw.click();
+  await page.getByText(CHIP).first().waitFor({ timeout: 30_000 });
+  await page.waitForTimeout(1200);
+  return page.getByText(CHIP).first().innerText();
+};
+const openOpponent = async (page) => {
+  const btn = page.getByRole("button", { name: /Opponent players out \(small effect\)/ });
+  if ((await btn.getAttribute("aria-expanded")) !== "false") fail("opponent section should start collapsed");
+  await btn.click();
+  if (!(await page.getByText("Opponent absences barely move this model.", { exact: false }).count()))
+    fail("opponent note missing after expanding");
+};
+
+if (luka && reaves) {
+  const { ctx, page } = await newPage({ name: "v2-reaves" });
+  await page.goto(`${WEB}/?player=${luka.id}`);
+  await settled(page, "Predicted points");
+  if (!(await page.getByText(SHOTS).count())) fail('who\'s out rows should read "36 min, 18 shots"');
+  const chip = await switchOff(page, reaves.name);
+  await pageChecks(page, "v2 reaves out", { minBars: 8 });
+  console.log(`  [v2 reaves] Luka with Reaves off: "${chip}"`);
+  await snap(page, "v2-matchup-reaves-out-desktop-dark");
+  await ctx.close();
+} else fail("Luka or Reaves not in /players");
+
+const sas = allTeams.find((t) => t.abbr === "SAS");
+if (luka && wemby && sas) {
+  const { ctx, page } = await newPage({ name: "v2-wemby" });
+  await page.goto(`${WEB}/?player=${luka.id}&opp=${sas.id}`);
+  await settled(page, "Predicted points");
+  await openOpponent(page);
+  const chip = await switchOff(page, wemby.name);
+  const keyLine = await page.getByText("Key defender", { exact: true }).count();
+  await pageChecks(page, "v2 wemby out", { minBars: 8 });
+  console.log(`  [v2 wemby] Luka vs SAS with Wembanyama off: "${chip}", key defender line shown: ${keyLine > 0}`);
+  await snap(page, "v2-matchup-wemby-out-vs-sas-desktop-dark");
+  await ctx.close();
+} else fail("Luka, Wembanyama or SAS not found");
+
+// an opponent that has a "Key defender" line right now (same rule as opponent-card.tsx)
+if (luka) {
+  const meta = await (await fetch(`${API}/meta`)).json();
+  let found = null;
+  for (const t of allTeams.filter((t) => t.abbr !== luka.team)) {
+    const rot = await (await fetch(`${API}/rotations?player_id=${luka.id}&opp_id=${t.id}&date=${meta.default_date}`)).json();
+    const opp = rot.teams.find((x) => x.side === "opponent");
+    const p = opp.players
+      .filter((p) => p.still_on_team && p.def_delta >= 2 && p.games_without >= 5 && p.games_with >= 5)
+      .sort((a, b) => b.def_delta - a.def_delta)[0];
+    if (p) {
+      found = { team: t, p };
+      break;
+    }
+  }
+  if (found) {
+    const { ctx, page } = await newPage({ name: "v2-key-defender" });
+    await page.goto(`${WEB}/?player=${luka.id}&opp=${found.team.id}`);
+    await settled(page, "Predicted points");
+    const line = await page.getByText(/points per 100 possessions without/).first().innerText();
+    await openOpponent(page);
+    await switchOff(page, found.p.name);
+    const highlighted = await page.getByText("Out tonight", { exact: true }).count();
+    await pageChecks(page, "v2 key defender", { minBars: 8 });
+    console.log(`  [v2 key defender] ${found.team.abbr}: "${line}" | switched off -> highlighted: ${highlighted > 0}`);
+    if (!highlighted) fail("key defender line not highlighted when he's switched off");
+    await snap(page, `v2-matchup-key-defender-${found.team.abbr}-desktop-dark`);
+    await ctx.close();
+  } else console.log("  [v2 key defender] no opponent has a key defender line right now");
 }
 
 // Copy link: the copied URL reopens the same matchup (same side, players out, number)

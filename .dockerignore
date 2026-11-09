@@ -1,0 +1,14 @@
+# keep the Docker build small: the API only needs src/, models/deploy_model.joblib, data/site/, api/
+.venv/
+**/__pycache__/
+.ipynb_checkpoints/
+.DS_Store
+data/raw/
+data/processed/
+notebooks/
+figures/
+results/
+docs/
+app/
+api/tests/
+models/final_model.joblib

@@ -1,0 +1,12 @@
+{
+  "season": "2026-27",
+  "stats_through": "2026-11-08",
+  "built_at": "2026-11-08 22:07",
+  "test_season": "2025-26",
+  "test_games": 19832,
+  "test_mae": 4.86,
+  "baseline_l5_mae": 5.24,
+  "pct_within_3": 39,
+  "pct_within_5": 60,
+  "pct_off_10_plus": 10
+}

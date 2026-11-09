@@ -1,0 +1,23 @@
+# Python
+.venv/
+__pycache__/
+.ipynb_checkpoints/
+.pytest_cache/
+
+# Node / Next.js
+node_modules/
+web/.next/
+web/out/
+*.tsbuildinfo
+
+# Mac
+.DS_Store
+
+# big / rebuildable data (the site only needs data/site/)
+data/raw/
+data/processed/features.csv
+
+# secrets: never commit env files, but keep the examples
+.env
+.env.*
+!.env.example

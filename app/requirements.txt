@@ -1,0 +1,9 @@
+# What the hosted app needs (Streamlit Cloud reads this file because it sits next to
+# streamlit_app.py). The root requirements.txt is the full dev setup (nba_api, jupyter, ...).
+# scikit-learn MUST match the version the models were saved with, or loading them breaks.
+scikit-learn==1.9.1
+streamlit==1.66.1
+pandas==3.1.0
+numpy==2.5.4
+joblib==1.6.0
+altair==6.3.0

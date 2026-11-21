@@ -94,7 +94,7 @@ Note: Vercel also makes "preview" URLs for each deploy (long names with random l
 Run this on the laptop (stats.nba.com blocks cloud servers, so the pull can't happen on Render):
 
 ```bash
-cd ~/Downloads/nba-points
+cd ~/Projects/nba-points
 ./refresh.sh
 git add data/site
 git commit -m "refresh data"
@@ -122,7 +122,7 @@ Already done on the laptop: `git init` and the first commits. To create the GitH
 ```bash
 brew install gh                 # GitHub's command line tool
 gh auth login                   # pick GitHub.com, HTTPS, "Login with a web browser", follow the code prompt
-cd ~/Downloads/nba-points
+cd ~/Projects/nba-points
 gh repo create nba-points --public --source=. --remote=origin --push
 ```
 

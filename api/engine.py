@@ -10,6 +10,7 @@ What this file adds on top:
   - a fast sweep over all 29 opponents (see sweep() for why it's exact)
 """
 
+import copy
 import json
 import sys
 import threading
@@ -90,6 +91,10 @@ class Engine:
         self.last5 = cur.groupby("PLAYER_ID")["PTS"].apply(lambda s: s.tail(5).mean())
         self._lock = threading.Lock()
         self._slate = lru_cache(maxsize=32)(self._slate_uncached)
+        # speed caches (Render's free CPU is ~20x slower than the laptop). Nothing here
+        # changes a number: the data only changes on redeploy, which starts a new process.
+        self._team_feats_cache: dict = {}     # (team, opp, date, home) -> build_team_features
+        self._predict_cached = lru_cache(maxsize=512)(self._predict_uncached)
 
     # ------------------------------------------------------------ input checks
 
@@ -144,7 +149,16 @@ class Engine:
         returns (tonight's row with every column, his earlier rows, his team)."""
         p, t, team_id = _tonight_tables(player_id, opp_id, d, home, list(team_out), list(opp_out),
                                         self.players, self.teams)
-        df = build_player_features(p, build_team_features(t), player_ids=[player_id])
+        # team logs + tonight's two team rows depend only on (team, opp, date, home),
+        # not on the player or who's out, so their features are reused across calls
+        key = (team_id, opp_id, d.strftime("%Y-%m-%d"), bool(home))
+        team_feats = self._team_feats_cache.get(key)
+        if team_feats is None:
+            team_feats = build_team_features(t)
+            if len(self._team_feats_cache) >= 256:
+                self._team_feats_cache.clear()
+            self._team_feats_cache[key] = team_feats
+        df = build_player_features(p, team_feats, player_ids=[player_id])
         me = df[df["PLAYER_ID"] == player_id]
         row = me[me["GAME_ID"] == TONIGHT_GAME_ID].reset_index(drop=True)
         hist = me[me["GAME_ID"] != TONIGHT_GAME_ID].reset_index(drop=True)
@@ -308,15 +322,23 @@ class Engine:
         if player_id in set(team_out_ids) | set(opp_out_ids):
             raise BadInput("the player being predicted can't be in an out list")
         team_out, opp_out = sorted(set(team_out_ids)), sorted(set(opp_out_ids))
+        # same inputs -> same answer, so flipping a switch back (and "everyone playing",
+        # which the page already asked for on load) comes from the cache
+        res = self._predict_cached(player_id, opp_id, d.strftime("%Y-%m-%d"), bool(home),
+                                   tuple(team_out), tuple(opp_out))
+        return copy.deepcopy(res)
 
-        row, hist, _ = self._tonight(player_id, opp_id, d, home, team_out, opp_out)
+    def _predict_uncached(self, player_id: int, opp_id: int, day: str, home: bool,
+                          team_out: tuple, opp_out: tuple) -> dict:
+        d = pd.Timestamp(day)
+        team_out, opp_out = list(team_out), list(opp_out)
+        row, hist, team_id = self._tonight(player_id, opp_id, d, home, team_out, opp_out)
         X = row[FEATURES]
         pred = float(predict_points(X)[0])
         x = X.iloc[0]
         everyone = pred
         if team_out or opp_out:
-            row0, _, _ = self._tonight(player_id, opp_id, d, home)
-            everyone = float(predict_points(row0[FEATURES])[0])
+            everyone = self._predict_cached(player_id, opp_id, day, home, (), ())["prediction"]
 
         slate = self.slate(d)
         team_net = float(row["team_net_rtg"].iloc[0])

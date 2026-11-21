@@ -25,3 +25,8 @@ data/processed/features.csv
 # class materials: kept on the laptop, not published
 docs/assignment.md
 docs/class_example_housing.py
+
+# daily refresh: local backups and logs
+backups/
+logs/
+.refresh.lock/

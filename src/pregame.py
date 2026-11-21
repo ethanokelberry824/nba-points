@@ -163,7 +163,7 @@ def pregame_features(player_id: int, opp_team_id: int, game_date, home: bool,
         players, teams = load_site_logs()
     p, t, _ = _tonight_tables(player_id, opp_team_id, game_date, home, team_out_ids,
                               opp_out_ids, players, teams, team_id)
-    df = build_player_features(p, build_team_features(t))
+    df = build_player_features(p, build_team_features(t), player_ids=[player_id])
     row = df[(df["GAME_ID"] == TONIGHT_GAME_ID) & (df["PLAYER_ID"] == player_id)]
     return row[FEATURES].reset_index(drop=True)
 

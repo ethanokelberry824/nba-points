@@ -144,7 +144,7 @@ class Engine:
         returns (tonight's row with every column, his earlier rows, his team)."""
         p, t, team_id = _tonight_tables(player_id, opp_id, d, home, list(team_out), list(opp_out),
                                         self.players, self.teams)
-        df = build_player_features(p, build_team_features(t))
+        df = build_player_features(p, build_team_features(t), player_ids=[player_id])
         me = df[df["PLAYER_ID"] == player_id]
         row = me[me["GAME_ID"] == TONIGHT_GAME_ID].reset_index(drop=True)
         hist = me[me["GAME_ID"] != TONIGHT_GAME_ID].reset_index(drop=True)

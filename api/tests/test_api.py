@@ -108,8 +108,9 @@ def test_rotation_shots_feed_the_features(client, engine, test_players, game_dat
         assert on, t["abbr"]
         for p in on:
             g = cur[cur["PLAYER_ID"] == p["player_id"]]
-            assert p["usual_tsa"] == pytest.approx((g["FGA"] + 0.44 * g["FTA"]).mean(), abs=0.05)
-            assert p["usual_min"] == pytest.approx(g["MIN"].mean(), abs=0.05)
+            # the API rounds to 1 decimal, so up to 0.05 off (+ float noise: 18.75 -> 18.8)
+            assert p["usual_tsa"] == pytest.approx((g["FGA"] + 0.44 * g["FTA"]).mean(), abs=0.0501)
+            assert p["usual_min"] == pytest.approx(g["MIN"].mean(), abs=0.0501)
         side = "team" if t["side"] == "team" else "opp"
         star = max(on, key=lambda p: p["usual_tsa"])
         body = {"player_id": pid, "opp_id": opp, "date": game_date,

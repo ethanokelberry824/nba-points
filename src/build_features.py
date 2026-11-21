@@ -275,8 +275,14 @@ def add_matchup_history(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def build_player_features(players: pd.DataFrame, team_feats: pd.DataFrame) -> pd.DataFrame:
-    df = players.sort_values(["PLAYER_ID", "GAME_DATE"]).reset_index(drop=True)
+def build_player_features(players: pd.DataFrame, team_feats: pd.DataFrame,
+                          player_ids=None) -> pd.DataFrame:
+    """player_ids: only build rows for these players (the site needs one player's row).
+    Every player feature is computed within his own games, so their rows come out the
+    same as a full build; teammates still count for who's out, because
+    missing_rotation_minutes below gets the full `players` table. Training passes None."""
+    df = players if player_ids is None else players[players["PLAYER_ID"].isin(player_ids)]
+    df = df.sort_values(["PLAYER_ID", "GAME_DATE"]).reset_index(drop=True)
     df["HOME"] = df["MATCHUP"].str.contains(" vs. ").astype(int)
     df["TSA"] = df["FGA"] + 0.44 * df["FTA"]       # true shooting attempts
     season_keys = ["PLAYER_ID", "SEASON"]

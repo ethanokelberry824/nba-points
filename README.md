@@ -133,6 +133,18 @@ git push
 
 `refresh.sh` pulls the latest games, rebuilds the features and `data/site/`, updates the live tracker, and runs the match test. The model itself doesn't get retrained mid-season; only the stats it reads change. Pushing redeploys the hosted API and site. Deploy steps are in [DEPLOY.md](DEPLOY.md).
 
+### Every morning, automatically
+
+`scripts/daily_refresh.sh` does all of the above on a schedule: back up `data/site/` and this season's raw logs to `backups/` (30 days kept), run `refresh.sh`, check that the stats-through date didn't go backwards, then commit `data/site/` and push `main`. If anything fails, `data/site/` is put back from the backup, nothing is pushed, and a Mac notification says so. The pull keeps only games before today, so tonight's games can always be predicted.
+
+```bash
+./scripts/install_daily_refresh.sh            # macOS launchd job: 7:00, retries 10:00 and 13:00, and at login
+./scripts/install_daily_refresh.sh --remove   # turn it off
+./scripts/daily_refresh.sh --force            # run it now, even if today already ran
+```
+
+Logs go to `logs/refresh-<date>.log`. The laptop has to be on (asleep is fine; launchd runs a missed job when it wakes). The project must not live in `~/Downloads`, `~/Documents` or `~/Desktop`: macOS blocks background jobs from those folders.
+
 ## Limitations
 
 - No pregame injury or lineup news. The site lets you switch off players who are out, but it doesn't know on its own.

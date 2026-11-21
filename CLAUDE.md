@@ -41,6 +41,7 @@ Reference docs in `docs/`:
 - [ ] Streamlit Cloud deploy of the backup app (optional once the Next.js site is live)
 - [x] Version 2 (Nov 9, branch `v2-shot-volume`, NOT merged to main): + team_missing_tsa / opp_missing_tsa. See "Version 2 (Nov 9)" below. Waiting on Ethan's review before merging (the live site deploys from main).
 - [ ] Slides
+- [x] Daily morning refresh (Nov 21): `scripts/daily_refresh.sh` run by launchd (`scripts/install_daily_refresh.sh`, label com.nbapoints.daily-refresh, 7:00 + retries 10:00/13:00 + at login, one success per day). Backs up data/site + current raw logs to `backups/<date_time>/` (30 days), runs refresh.sh, refuses to push if stats_through goes backwards (restores the backup), commits ONLY data/site and pushes main. Logs in `logs/`. Pull keeps only games before today (an afternoon game had set stats_through = today, which hid tonight's games from the site). Project moved from ~/Downloads to ~/Projects/nba-points the same day (macOS blocks launchd jobs in Downloads); .venv rebuilt, identical packages. Verified a full run under launchd, push included. Version 2 is now merged into main.
 - [ ] Before Dec 12: update 01_eda.ipynb to the new feature names so the whole project re-runs end to end
 
 Update this checklist as things get done.

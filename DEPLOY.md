@@ -91,7 +91,7 @@ Note: Vercel also makes "preview" URLs for each deploy (long names with random l
 
 ## d. Updating the data later
 
-Run this on the laptop (stats.nba.com blocks cloud servers, so the pull can't happen on Render):
+This happens on its own every morning once `./scripts/install_daily_refresh.sh` has been run (see "Every morning, automatically" in the README). To do it by hand, run this on the laptop (stats.nba.com blocks cloud servers, so the pull can't happen on Render):
 
 ```bash
 cd ~/Projects/nba-points

@@ -38,6 +38,18 @@ function describeChange(prev: PredictResp, next: PredictResp, names: Map<number,
   return { delta, text: `${signed(delta)} with ${parts.join(", ")}` };
 }
 
+/** The same prediction with nobody switched off (the API sends that number with every answer). */
+const everyonePlaying = (d: PredictResp): PredictResp => ({
+  ...d,
+  team_out_ids: [],
+  opp_out_ids: [],
+  prediction: d.prediction_everyone_playing,
+});
+
+const ids = (xs: number[]) => [...xs].sort((a, b) => a - b).join(",");
+const outKey = (d: PredictResp) => `${ids(d.team_out_ids)}#${ids(d.opp_out_ids)}`;
+const sameOut = (a: PredictResp, b: PredictResp) => outKey(a) === outKey(b);
+
 export function MatchupPage() {
   const sel = useSelection();
   const { player, oppId, date, home, teamOut, oppOut } = sel;
@@ -74,12 +86,20 @@ export function MatchupPage() {
   const { data: history } = useHistory(player?.id ?? null);
 
   // ---------------------------------------------------------------- "+0.6 with Reaves out"
+  // Same matchup as the last number: describe the flip. New matchup (or first load): there's
+  // no earlier number for it on screen (a flip during a home/away change skips the in-between
+  // answer), so compare against this matchup's "everyone playing" number instead.
+  // The text is built at render time, so names fill in once the rotations load.
   const [prev, setPrev] = useState<PredictResp | undefined>(undefined);
-  const [change, setChange] = useState<Change>(null);
+  const [pair, setPair] = useState<[PredictResp, PredictResp] | null>(null);
   if (data !== prev) {
     setPrev(data);
-    setChange(data && prev && ctxOf(data) === ctxOf(prev) ? (describeChange(prev, data, names) ?? change) : null);
+    if (!data) setPair(null);
+    else if (prev && ctxOf(data) === ctxOf(prev)) {
+      if (!sameOut(prev, data)) setPair([prev, data]); // a refetch of the same list keeps the chip
+    } else setPair(sameOut(everyonePlaying(data), data) ? null : [everyonePlaying(data), data]);
   }
+  const change = useMemo(() => (pair ? describeChange(pair[0], pair[1], names) : null), [pair, names]);
 
   // stale-data banner for this game date
   useEffect(() => {

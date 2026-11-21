@@ -46,7 +46,7 @@ git pull --ff-only --quiet origin main || echo "warning: git pull failed, contin
 # 1. backup
 SEASON="$(python3 -c 'import json;print(json.load(open("data/site/meta.json"))["season"])')"
 OLD_THROUGH="$(python3 -c 'import json;print(json.load(open("data/site/meta.json"))["stats_through"])')"
-BK="backups/$TODAY"
+BK="backups/$(date +%F_%H%M%S)"   # one folder per run, so a second run never nests into the first
 mkdir -p "$BK/raw"
 cp -R data/site "$BK/site"
 cp data/raw/*_"$SEASON".csv "$BK/raw/"

@@ -1,5 +1,5 @@
 {
- "built_at": "2026-11-09 11:21",
+ "built_at": "2026-11-21 13:45",
  "test_season": "2025-26",
  "test_games": 19832,
  "final_model": "blend: 0.6 * HistGB + 0.4 * Huber, clipped at 0",
@@ -16443,11 +16443,11 @@
  "live": {
   "season": "2026-27",
   "model": "deploy model, version 2 (trained 2018-19 to 2025-26, never saw this season)",
-  "stats_through": "2026-11-08",
-  "games": 2383,
-  "mae_model": 4.853,
-  "mae_model_v1": 4.855,
-  "mae_baseline_l5": 5.342,
+  "stats_through": "2026-11-21",
+  "games": 3821,
+  "mae_model": 4.867,
+  "mae_model_v1": 4.871,
+  "mae_baseline_l5": 5.335,
   "pct_within_5": 60.4,
   "weeks": [
    {
@@ -16465,20 +16465,40 @@
     "week_start": "2026-10-26",
     "first_game": "2026-10-26",
     "last_game": "2026-11-01",
-    "games": 778,
-    "mae_model": 4.957,
-    "mae_model_v1": 4.973,
-    "mae_baseline_l5": 5.357
+    "games": 777,
+    "mae_model": 4.955,
+    "mae_model_v1": 4.972,
+    "mae_baseline_l5": 5.355
    },
    {
     "week": 3,
     "week_start": "2026-11-02",
     "first_game": "2026-11-02",
     "last_game": "2026-11-08",
-    "games": 884,
-    "mae_model": 4.673,
-    "mae_model_v1": 4.679,
-    "mae_baseline_l5": 4.936
+    "games": 883,
+    "mae_model": 4.675,
+    "mae_model_v1": 4.68,
+    "mae_baseline_l5": 4.939
+   },
+   {
+    "week": 4,
+    "week_start": "2026-11-09",
+    "first_game": "2026-11-09",
+    "last_game": "2026-11-15",
+    "games": 826,
+    "mae_model": 4.906,
+    "mae_model_v1": 4.922,
+    "mae_baseline_l5": 5.376
+   },
+   {
+    "week": 5,
+    "week_start": "2026-11-16",
+    "first_game": "2026-11-16",
+    "last_game": "2026-11-21",
+    "games": 614,
+    "mae_model": 4.868,
+    "mae_model_v1": 4.864,
+    "mae_baseline_l5": 5.253
    }
   ]
  },
@@ -16502,10 +16522,10 @@
    "note": "Version 1's 2025-26 score is the pre-committed result. Version 2 was built after that, and the questions behind it looked at some 2025-26 games, so its 2025-26 score is a second look. The live 2026-27 season is the clean check for version 2."
   },
   "live": {
-   "mae_v1": 4.855,
-   "mae_v2": 4.853,
-   "mae_baseline_l5": 5.342,
-   "games": 2383
+   "mae_v1": 4.871,
+   "mae_v2": 4.867,
+   "mae_baseline_l5": 5.335,
+   "games": 3821
   },
   "reaves": {
    "example": "Luka Doncic, 2026-11-06 vs POR",

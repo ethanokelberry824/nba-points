@@ -65,6 +65,16 @@ def main(refresh: bool) -> None:
 
             print(f"pull  {label} logs {season} ...")
             df = fetch_game_log(season, kind)
+            if season == CURRENT_SEASON:
+                # keep only games before today (laptop's local date). An afternoon game
+                # that already finished would push "stats through" to today, and the
+                # site only predicts dates after that, so tonight's games would drop
+                # off. Today's games come in with tomorrow morning's refresh.
+                today = pd.Timestamp.now().strftime("%Y-%m-%d")
+                n_today = int((df["GAME_DATE"] >= today).sum())
+                df = df[df["GAME_DATE"] < today]
+                if n_today:
+                    print(f"   held back {n_today} rows from today's games (next refresh)")
             df.to_csv(out, index=False)
             print(f"   saved {len(df):,} rows -> {out.name}")
             time.sleep(DELAY_SECONDS)

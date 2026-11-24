@@ -1,5 +1,5 @@
 {
- "built_at": "2026-11-23 10:07",
+ "built_at": "2026-11-24 07:07",
  "test_season": "2025-26",
  "test_games": 19832,
  "final_model": "blend: 0.6 * HistGB + 0.4 * Huber, clipped at 0",
@@ -16443,12 +16443,12 @@
  "live": {
   "season": "2026-27",
   "model": "deploy model, version 2 (trained 2018-19 to 2025-26, never saw this season)",
-  "stats_through": "2026-11-22",
-  "games": 4001,
-  "mae_model": 4.882,
-  "mae_model_v1": 4.886,
-  "mae_baseline_l5": 5.343,
-  "pct_within_5": 60.3,
+  "stats_through": "2026-11-23",
+  "games": 4165,
+  "mae_model": 4.868,
+  "mae_model_v1": 4.871,
+  "mae_baseline_l5": 5.319,
+  "pct_within_5": 60.4,
   "weeks": [
    {
     "week": 1,
@@ -16499,6 +16499,16 @@
     "mae_model": 4.947,
     "mae_model_v1": 4.94,
     "mae_baseline_l5": 5.312
+   },
+   {
+    "week": 6,
+    "week_start": "2026-11-23",
+    "first_game": "2026-11-23",
+    "last_game": "2026-11-23",
+    "games": 164,
+    "mae_model": 4.511,
+    "mae_model_v1": 4.519,
+    "mae_baseline_l5": 4.735
    }
   ]
  },
@@ -16522,10 +16532,10 @@
    "note": "Version 1's 2025-26 score is the pre-committed result. Version 2 was built after that, and the questions behind it looked at some 2025-26 games, so its 2025-26 score is a second look. The live 2026-27 season is the clean check for version 2."
   },
   "live": {
-   "mae_v1": 4.886,
-   "mae_v2": 4.882,
-   "mae_baseline_l5": 5.343,
-   "games": 4001
+   "mae_v1": 4.871,
+   "mae_v2": 4.868,
+   "mae_baseline_l5": 5.319,
+   "games": 4165
   },
   "reaves": {
    "example": "Luka Doncic, 2026-11-06 vs POR",

@@ -1,5 +1,5 @@
 {
- "built_at": "2026-11-26 10:00",
+ "built_at": "2026-11-27 07:45",
  "test_season": "2025-26",
  "test_games": 19832,
  "final_model": "blend: 0.6 * HistGB + 0.4 * Huber, clipped at 0",
